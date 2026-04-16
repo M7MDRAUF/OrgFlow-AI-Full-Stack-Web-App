@@ -7,6 +7,7 @@ import { createUsersRouter } from '../modules/users/user.routes.js';
 import { createTeamsRouter } from '../modules/teams/team.routes.js';
 import { createProjectsRouter } from '../modules/projects/project.routes.js';
 import { createTasksRouter } from '../modules/tasks/task.routes.js';
+import { createDashboardRouter } from '../modules/dashboard/dashboard.routes.js';
 
 export function createApiRouter(): Router {
   const router = Router();
@@ -18,5 +19,6 @@ export function createApiRouter(): Router {
   router.use('/teams', createTeamsRouter());
   router.use('/projects', createProjectsRouter());
   router.use('/tasks', createTasksRouter());
+  router.use('/dashboard', createDashboardRouter());
   return router;
 }
