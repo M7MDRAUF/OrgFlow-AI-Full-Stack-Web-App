@@ -1,0 +1,39 @@
+{
+  "name": "orgflow-ai",
+  "private": true,
+  "version": "0.1.0",
+  "description": "OrgFlow AI — role-based MERN + TypeScript platform with permission-aware RAG.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "npm run dev -w @orgflow/api",
+    "dev:web": "npm run dev -w @orgflow/web",
+    "build": "npm run build -w @orgflow/shared-types && npm run build -w @orgflow/api && npm run build -w @orgflow/web",
+    "typecheck": "npm run typecheck -w @orgflow/shared-types && npm run typecheck -w @orgflow/api && npm run typecheck -w @orgflow/web",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "npm run test -w @orgflow/api --if-present && npm run test -w @orgflow/web --if-present",
+    "audit:deps": "npm audit --omit=dev || exit 0",
+    "gates": "npm run typecheck && npm run lint && npm run format:check && npm run test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.15.0",
+    "@types/node": "^22.10.1",
+    "eslint": "^9.15.0",
+    "eslint-config-prettier": "^9.1.0",
+    "globals": "^15.12.0",
+    "prettier": "^3.3.3",
+    "ts-prune": "^0.10.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.15.0"
+  }
+}

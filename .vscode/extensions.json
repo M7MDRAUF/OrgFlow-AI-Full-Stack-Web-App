@@ -1,0 +1,11 @@
+{
+  "recommendations": [
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "bradlc.vscode-tailwindcss",
+    "mongodb.mongodb-vscode",
+    "usernamehw.errorlens",
+    "ms-vscode.vscode-typescript-next",
+    "orta.vscode-jest"
+  ]
+}

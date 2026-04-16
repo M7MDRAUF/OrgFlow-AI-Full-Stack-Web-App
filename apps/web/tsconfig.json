@@ -1,0 +1,15 @@
+{
+  "extends": "../../packages/shared-config/tsconfig.react.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "baseUrl": "./src",
+    "paths": {
+      "@/*": ["*"]
+    },
+    "types": ["vite/client", "@testing-library/jest-dom"],
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["node_modules", "dist", "build"]
+}

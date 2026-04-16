@@ -1,0 +1,50 @@
+{
+  "name": "@orgflow/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/app/server.js",
+  "scripts": {
+    "dev": "tsx watch src/app/server.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/app/server.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@orgflow/shared-types": "*",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "mammoth": "^1.8.0",
+    "mongoose": "^8.8.2",
+    "morgan": "^1.10.0",
+    "multer": "^2.0.0",
+    "ollama": "^0.5.10",
+    "pdf-parse": "^1.1.1",
+    "pino": "^9.5.0",
+    "pino-pretty": "^13.0.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/morgan": "^1.9.9",
+    "@types/multer": "^1.4.12",
+    "@types/node": "^22.10.1",
+    "@types/pdf-parse": "^1.1.4",
+    "@types/supertest": "^6.0.2",
+    "@vitest/coverage-v8": "^2.1.6",
+    "supertest": "^7.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.6"
+  }
+}
