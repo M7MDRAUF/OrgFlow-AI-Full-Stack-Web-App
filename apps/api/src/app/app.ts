@@ -3,9 +3,10 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import type { AppEnv } from './env.js';
+import { createApiRouter } from './router.js';
+import { errorHandler, notFoundHandler } from '../middleware/error.middleware.js';
+import { sendSuccess } from '../utils/response.js';
 
-// Bootstrap placeholder. Middleware stack (auth/scope/validate/error) and
-// module routes are wired by platform-agent + domain agents in later stages.
 export function createApp(env: AppEnv): Express {
   const app = express();
 
@@ -19,12 +20,16 @@ export function createApp(env: AppEnv): Express {
   }
 
   app.get('/health', (_req: Request, res: Response) => {
-    res.status(200).json({ success: true, data: { status: 'ok' } });
+    sendSuccess(res, { status: 'ok' });
+  });
+  app.get('/ready', (_req: Request, res: Response) => {
+    sendSuccess(res, { status: 'ready' });
   });
 
-  app.get('/ready', (_req: Request, res: Response) => {
-    res.status(200).json({ success: true, data: { status: 'ready' } });
-  });
+  app.use(env.API_BASE_PATH, createApiRouter());
+
+  app.use(notFoundHandler);
+  app.use(errorHandler);
 
   return app;
 }

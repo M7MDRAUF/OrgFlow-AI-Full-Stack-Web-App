@@ -1,4 +1,22 @@
 // @orgflow/ui — shared design-system primitives. Owned by ui-agent (AGENTS.md §4.4).
-// Populated during Milestone 2 (UI shell + primitives). This entry point exists so
-// downstream workspaces can import from a stable path from day one.
-export {};
+export { Button } from './Button';
+export type { ButtonProps, ButtonSize, ButtonVariant } from './Button';
+export { Input } from './Input';
+export type { InputProps } from './Input';
+export { Card } from './Card';
+export type { CardProps } from './Card';
+export { Modal } from './Modal';
+export type { ModalProps } from './Modal';
+export { Table } from './Table';
+export type { TableColumn, TableProps } from './Table';
+export { EmptyState } from './EmptyState';
+export type { EmptyStateProps } from './EmptyState';
+export { Skeleton } from './Skeleton';
+export type { SkeletonProps } from './Skeleton';
+export { ErrorState } from './ErrorState';
+export type { ErrorStateProps } from './ErrorState';
+export { Select } from './Select';
+export type { SelectOption, SelectProps } from './Select';
+export { Badge, Field, Textarea } from './Extras';
+export type { BadgeProps, FieldProps, TextareaProps } from './Extras';
+export { cn } from './utils/cn';
