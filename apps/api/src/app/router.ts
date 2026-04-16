@@ -5,6 +5,7 @@ import { sendSuccess } from '../utils/response.js';
 import { createAuthRouter } from '../modules/auth/auth.routes.js';
 import { createUsersRouter } from '../modules/users/user.routes.js';
 import { createTeamsRouter } from '../modules/teams/team.routes.js';
+import { createProjectsRouter } from '../modules/projects/project.routes.js';
 
 export function createApiRouter(): Router {
   const router = Router();
@@ -14,5 +15,6 @@ export function createApiRouter(): Router {
   router.use('/auth', createAuthRouter());
   router.use('/users', createUsersRouter());
   router.use('/teams', createTeamsRouter());
+  router.use('/projects', createProjectsRouter());
   return router;
 }
