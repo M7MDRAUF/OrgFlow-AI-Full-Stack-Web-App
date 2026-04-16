@@ -1,4 +1,4 @@
-import { useEffect, type JSX, type PropsWithChildren, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type JSX, type PropsWithChildren, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from './utils/cn';
 
@@ -19,15 +19,27 @@ const sizeClasses: Record<NonNullable<ModalProps['size']>, string> = {
 
 export function Modal(props: PropsWithChildren<ModalProps>): JSX.Element | null {
   const { open, onClose, title, footer, size = 'md', closeOnBackdrop = true, children } = props;
+  const titleId = useId();
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
+    previousFocusRef.current = document.activeElement as HTMLElement | null;
     const handleKey = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', handleKey);
+    const container = containerRef.current;
+    if (container !== null) {
+      const first = container.querySelector<HTMLElement>(
+        'input, select, textarea, button, [href], [tabindex]:not([tabindex="-1"])',
+      );
+      first?.focus();
+    }
     return () => {
       window.removeEventListener('keydown', handleKey);
+      previousFocusRef.current?.focus();
     };
   }, [open, onClose]);
 
@@ -37,18 +49,23 @@ export function Modal(props: PropsWithChildren<ModalProps>): JSX.Element | null 
     <div
       role="dialog"
       aria-modal="true"
-      aria-label={typeof title === 'string' ? title : 'Dialog'}
+      aria-labelledby={typeof title === 'string' ? titleId : undefined}
+      aria-label={typeof title !== 'string' ? 'Dialog' : undefined}
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
       onClick={closeOnBackdrop ? onClose : undefined}
     >
       <div
+        ref={containerRef}
         className={cn('w-full rounded-xl bg-white shadow-xl dark:bg-slate-900', sizeClasses[size])}
         onClick={(event) => {
           event.stopPropagation();
         }}
       >
         {title !== undefined && (
-          <header className="border-b border-slate-200 px-5 py-4 text-base font-semibold dark:border-slate-800">
+          <header
+            id={typeof title === 'string' ? titleId : undefined}
+            className="border-b border-slate-200 px-5 py-4 text-base font-semibold dark:border-slate-800"
+          >
             {title}
           </header>
         )}

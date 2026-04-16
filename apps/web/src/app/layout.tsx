@@ -74,9 +74,18 @@ export function AppLayout(): JSX.Element {
 
   return (
     <div className="flex min-h-screen">
-      <aside className="hidden w-56 flex-col border-r border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950 md:flex">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-brand-600 focus:px-3 focus:py-2 focus:text-white"
+      >
+        Skip to main content
+      </a>
+      <aside
+        className="hidden w-56 flex-col border-r border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950 md:flex"
+        aria-label="Primary"
+      >
         <div className="mb-6 text-lg font-semibold">OrgFlow AI</div>
-        <nav className="flex flex-col gap-1">
+        <nav aria-label="Primary navigation" className="flex flex-col gap-1">
           {visibleItems.map((item) => (
             <NavLink
               key={item.to}
@@ -84,14 +93,14 @@ export function AppLayout(): JSX.Element {
               end={item.to === '/'}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors',
+                  'flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500',
                   isActive
                     ? 'bg-brand-600 text-white'
                     : 'text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800',
                 )
               }
             >
-              {item.icon}
+              <span aria-hidden="true">{item.icon}</span>
               <span>{item.label}</span>
             </NavLink>
           ))}
@@ -108,15 +117,15 @@ export function AppLayout(): JSX.Element {
               <button
                 type="button"
                 onClick={handleLogout}
-                className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
               >
-                <LogOut size={14} />
+                <LogOut size={14} aria-hidden="true" />
                 Sign out
               </button>
             )}
           </div>
         </header>
-        <main className="flex-1 p-6">
+        <main id="main-content" tabIndex={-1} className="flex-1 p-6 focus:outline-none">
           <Outlet />
         </main>
       </div>
