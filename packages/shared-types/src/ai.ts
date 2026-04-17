@@ -47,3 +47,25 @@ export interface ChatRequestDto {
   teamId?: string;
   projectId?: string;
 }
+
+export interface UploadDocumentRequestDto {
+  title: string;
+  visibility: DocumentVisibility;
+  teamId?: string;
+  projectId?: string;
+  allowedRoles?: UserRole[];
+}
+
+export interface DocumentIngestionStatusDto {
+  status: DocumentStatus;
+  chunkCount: number | null;
+  error?: string;
+}
+
+export interface ChatHistoryMessageDto {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  sources: AiSourceCitation[];
+  createdAt: string;
+}
