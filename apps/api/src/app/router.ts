@@ -10,6 +10,7 @@ import { createTasksRouter } from '../modules/tasks/task.routes.js';
 import { createDashboardRouter } from '../modules/dashboard/dashboard.routes.js';
 import { createAnnouncementsRouter } from '../modules/announcements/announcement.routes.js';
 import { createDocumentsRouter } from '../modules/ai/documents/document.routes.js';
+import { createChatRouter } from '../modules/ai/chat/chat.routes.js';
 
 export function createApiRouter(): Router {
   const router = Router();
@@ -24,5 +25,6 @@ export function createApiRouter(): Router {
   router.use('/dashboard', createDashboardRouter());
   router.use('/announcements', createAnnouncementsRouter());
   router.use('/ai/documents', createDocumentsRouter());
+  router.use('/ai/chat', createChatRouter());
   return router;
 }
