@@ -21,7 +21,19 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-
+tp02_figures/
+figures/
+docx/
+pptx/
+tp02_figures.ipynb
+tp03_figures.ipynb
+TP03.md
+OrgFlow_AI_Speaker_Guide.docx
+OrgFlow_AI_Final_Presentation.pptx
+generate_tp03_docxjs.cjs
+generate_speaker_guide.cjs
+generate_pptx.cjs
+generate_pptx_v2.cjs
 # coverage & test output
 coverage/
 .nyc_output/
