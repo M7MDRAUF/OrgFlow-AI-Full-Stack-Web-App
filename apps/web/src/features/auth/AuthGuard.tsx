@@ -1,8 +1,10 @@
 // Route guards. Pages that require authentication wrap their element in
-// <AuthGuard>. Pages that require a minimum role add <RoleGuard>.
+// <AuthGuard>. Pages that require a minimum role add <RoleGuard>, which
+// renders an explicit 403 view (FE-L-004) instead of silently bouncing to /.
+import { hasAtLeastRole, type UserRole } from '@orgflow/shared-types';
 import type { JSX, ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { hasAtLeastRole, type UserRole } from '@orgflow/shared-types';
+import { ForbiddenPage } from '../../app/ForbiddenPage.js';
 import { authStorage } from './storage.js';
 
 export function AuthGuard(props: { children: ReactNode }): JSX.Element {
@@ -20,7 +22,7 @@ export function RoleGuard(props: { minRole: UserRole; children: ReactNode }): JS
     return <Navigate to="/login" replace />;
   }
   if (!hasAtLeastRole(profile.role, props.minRole)) {
-    return <Navigate to="/" replace />;
+    return <ForbiddenPage />;
   }
   return <>{props.children}</>;
 }

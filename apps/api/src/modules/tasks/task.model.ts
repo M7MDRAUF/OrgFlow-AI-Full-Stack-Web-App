@@ -1,6 +1,6 @@
 // Task model — scoped to project (which is scoped to team + org).
-import { Schema, type Types, model, type HydratedDocument, type Model } from 'mongoose';
 import type { TaskPriority, TaskStatus } from '@orgflow/shared-types';
+import { model, Schema, type HydratedDocument, type Model, type Types } from 'mongoose';
 
 export interface TaskDoc {
   organizationId: Types.ObjectId;
@@ -49,6 +49,12 @@ const taskSchema = new Schema<TaskDoc>(
 );
 
 taskSchema.index({ projectId: 1, status: 1 });
+// F-008: scope-first composite indexes to support the common dashboard and
+// task-list queries. organizationId is always the leading key so queries that
+// use only org+assignee / org+status remain index-backed.
+taskSchema.index({ organizationId: 1, assignedTo: 1, status: 1, dueDate: 1 });
+taskSchema.index({ organizationId: 1, teamId: 1, status: 1 });
+taskSchema.index({ organizationId: 1, dueDate: 1, status: 1 });
 
 export const TaskModel: Model<TaskDoc> = model<TaskDoc>('Task', taskSchema);
 export type TaskHydrated = HydratedDocument<TaskDoc>;

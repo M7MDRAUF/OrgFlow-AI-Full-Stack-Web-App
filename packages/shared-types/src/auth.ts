@@ -1,4 +1,5 @@
 // Auth DTOs — owned by contracts-agent. Consumed by auth-agent (api + web).
+import type { UserRole } from './roles.js';
 import type { UserResponseDto } from './user.js';
 
 export interface LoginRequestDto {
@@ -18,7 +19,7 @@ export interface MeResponseDto {
 export interface InviteUserRequestDto {
   email: string;
   name: string;
-  role: 'admin' | 'leader' | 'member';
+  role: UserRole;
   teamId?: string;
 }
 

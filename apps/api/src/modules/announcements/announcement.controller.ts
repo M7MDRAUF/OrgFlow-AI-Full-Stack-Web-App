@@ -1,13 +1,14 @@
 import type { Request, Response } from 'express';
-import { sendSuccess } from '../../utils/response.js';
 import { errors } from '../../utils/errors.js';
+import { paginationSchema } from '../../utils/pagination.js';
 import { requireParam } from '../../utils/request.js';
-import * as announcementService from './announcement.service.js';
+import { sendSuccess } from '../../utils/response.js';
 import type {
   CreateAnnouncementInput,
   ListAnnouncementsQuery,
   UpdateAnnouncementInput,
 } from './announcement.schema.js';
+import * as announcementService from './announcement.service.js';
 
 function requireAuth(req: Request) {
   if (!req.auth) throw errors.unauthenticated();
@@ -15,11 +16,24 @@ function requireAuth(req: Request) {
 }
 
 export async function listAnnouncementsHandler(req: Request, res: Response): Promise<void> {
-  const announcements = await announcementService.listAnnouncements(
+  const pagination = paginationSchema.parse(req.query);
+  const { items, total } = await announcementService.listAnnouncements(
     requireAuth(req),
     req.query as unknown as ListAnnouncementsQuery,
+    pagination,
   );
-  sendSuccess(res, { announcements });
+  sendSuccess(
+    res,
+    { announcements: items },
+    {
+      meta: {
+        page: pagination.page,
+        pageSize: pagination.pageSize,
+        total,
+        hasMore: pagination.page * pagination.pageSize < total,
+      },
+    },
+  );
 }
 
 export async function getAnnouncementHandler(req: Request, res: Response): Promise<void> {
@@ -61,4 +75,9 @@ export async function markAnnouncementReadHandler(req: Request, res: Response): 
     requireParam(req, 'id'),
   );
   sendSuccess(res, { announcement });
+}
+
+export async function getUnreadCountHandler(req: Request, res: Response): Promise<void> {
+  const result = await announcementService.getUnreadCount(requireAuth(req));
+  sendSuccess(res, result);
 }

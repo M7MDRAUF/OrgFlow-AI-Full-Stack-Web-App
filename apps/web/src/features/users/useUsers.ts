@@ -1,13 +1,15 @@
 // org-agent — react-query hooks for users admin.
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  InviteUserRequestDto,
+  InviteUserResponseDto,
   UpdateUserRequestDto,
   UpdateUserStatusRequestDto,
   UserResponseDto,
 } from '@orgflow/shared-types';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 import { apiClient } from '../../lib/api-client.js';
-
-const USERS_QUERY_KEY = ['users'] as const;
+import { QUERY_KEYS } from '../../lib/query-keys.js';
 
 export interface ListUsersFilters {
   teamId?: string;
@@ -19,11 +21,11 @@ export function useUsers(
   filters?: ListUsersFilters,
 ): ReturnType<typeof useQuery<UserResponseDto[]>> {
   return useQuery<UserResponseDto[]>({
-    queryKey: [...USERS_QUERY_KEY, filters ?? {}],
-    queryFn: async () => {
+    queryKey: [...QUERY_KEYS.users, filters ?? {}],
+    queryFn: async ({ signal }) => {
       const res = await apiClient.get<{ success: true; data: { users: UserResponseDto[] } }>(
         '/users',
-        { params: filters },
+        { params: filters, signal },
       );
       return res.data.data.users;
     },
@@ -48,7 +50,11 @@ export function useUpdateUser(): ReturnType<
       return res.data.data.user;
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: USERS_QUERY_KEY });
+      void qc.invalidateQueries({ queryKey: QUERY_KEYS.users });
+      toast.success('User updated');
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Something went wrong');
     },
   });
 }
@@ -71,23 +77,20 @@ export function useUpdateUserStatus(): ReturnType<
       return res.data.data.user;
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: USERS_QUERY_KEY });
+      void qc.invalidateQueries({ queryKey: QUERY_KEYS.users });
+      toast.success('User status updated');
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Something went wrong');
     },
   });
 }
 
-export interface InviteUserVars {
-  name: string;
-  email: string;
-  role: 'admin' | 'leader' | 'member';
-  teamId?: string;
-}
-
 export function useInviteUser(): ReturnType<
-  typeof useMutation<{ user: UserResponseDto; inviteToken: string }, Error, InviteUserVars>
+  typeof useMutation<InviteUserResponseDto, Error, InviteUserRequestDto>
 > {
   const qc = useQueryClient();
-  return useMutation<{ user: UserResponseDto; inviteToken: string }, Error, InviteUserVars>({
+  return useMutation<InviteUserResponseDto, Error, InviteUserRequestDto>({
     mutationFn: async (input) => {
       const res = await apiClient.post<{
         success: true;
@@ -96,7 +99,11 @@ export function useInviteUser(): ReturnType<
       return res.data.data;
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: USERS_QUERY_KEY });
+      void qc.invalidateQueries({ queryKey: QUERY_KEYS.users });
+      toast.success('Invitation sent');
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Something went wrong');
     },
   });
 }

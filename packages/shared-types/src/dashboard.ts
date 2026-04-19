@@ -1,4 +1,7 @@
 // dashboard-agent — shared dashboard DTOs.
+import type { ProjectStatus } from './project.js';
+import type { TaskPriority, TaskStatus } from './task.js';
+
 export interface DashboardStats {
   teams: number;
   users: number;
@@ -20,7 +23,7 @@ export interface DashboardProjectSummary {
   id: string;
   title: string;
   teamId: string;
-  status: string;
+  status: ProjectStatus;
   taskCount: number;
   overdueCount: number;
 }
@@ -58,8 +61,8 @@ export interface MemberDashboardResponseDto {
     title: string;
     projectId: string;
     dueDate: string | null;
-    status: string;
-    priority: string;
+    status: TaskStatus;
+    priority: TaskPriority;
     overdue: boolean;
   }[];
 }

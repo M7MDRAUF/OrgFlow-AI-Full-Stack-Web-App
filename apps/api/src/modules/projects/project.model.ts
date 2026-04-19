@@ -1,6 +1,6 @@
 // Project model — scoped to organization + team. Tracks members, status, dates.
-import { Schema, type Types, model, type HydratedDocument, type Model } from 'mongoose';
 import type { ProjectStatus } from '@orgflow/shared-types';
+import { model, Schema, type HydratedDocument, type Model, type Types } from 'mongoose';
 
 export interface ProjectDoc {
   organizationId: Types.ObjectId;
@@ -42,6 +42,7 @@ const projectSchema = new Schema<ProjectDoc>(
 );
 
 projectSchema.index({ organizationId: 1, teamId: 1, title: 1 });
+projectSchema.index({ organizationId: 1, teamId: 1, status: 1 });
 
 export const ProjectModel: Model<ProjectDoc> = model<ProjectDoc>('Project', projectSchema);
 export type ProjectHydrated = HydratedDocument<ProjectDoc>;

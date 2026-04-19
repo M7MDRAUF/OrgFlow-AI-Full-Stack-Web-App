@@ -1,16 +1,17 @@
 // Central router. Domain modules register here during later milestones.
 // Each module exports a router from its `*.routes.ts`. Keep this file small.
 import { Router } from 'express';
-import { sendSuccess } from '../utils/response.js';
+import { createChatRouter } from '../modules/ai/chat/chat.routes.js';
+import { createDocumentsRouter } from '../modules/ai/documents/document.routes.js';
+import { createAnnouncementsRouter } from '../modules/announcements/announcement.routes.js';
 import { createAuthRouter } from '../modules/auth/auth.routes.js';
-import { createUsersRouter } from '../modules/users/user.routes.js';
-import { createTeamsRouter } from '../modules/teams/team.routes.js';
+import { createDashboardRouter } from '../modules/dashboard/dashboard.routes.js';
+import { createOrganizationsRouter } from '../modules/organizations/organization.routes.js';
 import { createProjectsRouter } from '../modules/projects/project.routes.js';
 import { createTasksRouter } from '../modules/tasks/task.routes.js';
-import { createDashboardRouter } from '../modules/dashboard/dashboard.routes.js';
-import { createAnnouncementsRouter } from '../modules/announcements/announcement.routes.js';
-import { createDocumentsRouter } from '../modules/ai/documents/document.routes.js';
-import { createChatRouter } from '../modules/ai/chat/chat.routes.js';
+import { createTeamsRouter } from '../modules/teams/team.routes.js';
+import { createUsersRouter } from '../modules/users/user.routes.js';
+import { sendSuccess } from '../utils/response.js';
 
 export function createApiRouter(): Router {
   const router = Router();
@@ -24,6 +25,7 @@ export function createApiRouter(): Router {
   router.use('/tasks', createTasksRouter());
   router.use('/dashboard', createDashboardRouter());
   router.use('/announcements', createAnnouncementsRouter());
+  router.use('/organizations', createOrganizationsRouter());
   router.use('/ai/documents', createDocumentsRouter());
   router.use('/ai/chat', createChatRouter());
   return router;

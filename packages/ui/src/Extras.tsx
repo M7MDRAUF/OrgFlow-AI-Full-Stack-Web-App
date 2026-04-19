@@ -1,5 +1,5 @@
 import type { JSX, ReactNode, TextareaHTMLAttributes } from 'react';
-import { forwardRef, type ForwardedRef } from 'react';
+import { cloneElement, forwardRef, isValidElement, type ForwardedRef } from 'react';
 import { cn } from './utils/cn';
 
 export interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
@@ -37,16 +37,31 @@ export interface FieldProps {
 
 export function Field(props: FieldProps): JSX.Element {
   const { label, htmlFor, hint, error, children } = props;
+  const errorId = error !== undefined ? `${htmlFor}-error` : undefined;
+  const hintId = error === undefined && hint !== undefined ? `${htmlFor}-hint` : undefined;
+  const describedBy = errorId ?? hintId;
+
+  // If the child is a valid React element and we have an error/hint id, inject
+  // `aria-describedby` so screen readers announce the associated message.
+  const child =
+    describedBy !== undefined && isValidElement<Record<string, unknown>>(children)
+      ? cloneElement(children, { 'aria-describedby': describedBy })
+      : children;
+
   return (
     <div className="flex flex-col gap-1">
       <label htmlFor={htmlFor} className="text-sm font-medium text-slate-700 dark:text-slate-300">
         {label}
       </label>
-      {children}
+      {child}
       {error !== undefined ? (
-        <p className="text-xs text-rose-600 dark:text-rose-400">{error}</p>
+        <p id={errorId} role="alert" className="text-xs text-rose-600 dark:text-rose-400">
+          {error}
+        </p>
       ) : hint !== undefined ? (
-        <p className="text-xs text-slate-500 dark:text-slate-400">{hint}</p>
+        <p id={hintId} className="text-xs text-slate-500 dark:text-slate-400">
+          {hint}
+        </p>
       ) : null}
     </div>
   );

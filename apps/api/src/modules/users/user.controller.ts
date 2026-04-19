@@ -1,9 +1,10 @@
 import type { Request, Response } from 'express';
-import { sendSuccess } from '../../utils/response.js';
 import { errors } from '../../utils/errors.js';
+import { paginationSchema } from '../../utils/pagination.js';
 import { requireParam } from '../../utils/request.js';
-import * as userService from './user.service.js';
+import { sendSuccess } from '../../utils/response.js';
 import type { ListUsersQuery, UpdateUserInput, UpdateUserStatusInput } from './user.schema.js';
+import * as userService from './user.service.js';
 
 function requireAuth(req: Request) {
   if (!req.auth) throw errors.unauthenticated();
@@ -12,8 +13,24 @@ function requireAuth(req: Request) {
 
 export async function listUsersHandler(req: Request, res: Response): Promise<void> {
   const auth = requireAuth(req);
-  const users = await userService.listUsers(auth, req.query as unknown as ListUsersQuery);
-  sendSuccess(res, { users });
+  const pagination = paginationSchema.parse(req.query);
+  const { items, total } = await userService.listUsers(
+    auth,
+    req.query as unknown as ListUsersQuery,
+    pagination,
+  );
+  sendSuccess(
+    res,
+    { users: items },
+    {
+      meta: {
+        page: pagination.page,
+        pageSize: pagination.pageSize,
+        total,
+        hasMore: pagination.page * pagination.pageSize < total,
+      },
+    },
+  );
 }
 
 export async function getUserHandler(req: Request, res: Response): Promise<void> {

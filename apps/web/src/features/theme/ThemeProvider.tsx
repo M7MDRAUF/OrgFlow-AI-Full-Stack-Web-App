@@ -25,8 +25,12 @@ const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
 function readInitialPreference(): ThemePreference {
   if (typeof window === 'undefined') return 'system';
-  const stored = window.localStorage.getItem(STORAGE_KEY);
-  if (stored === 'light' || stored === 'dark' || stored === 'system') return stored;
+  try {
+    const stored = window.localStorage.getItem(STORAGE_KEY);
+    if (stored === 'light' || stored === 'dark' || stored === 'system') return stored;
+  } catch {
+    // localStorage unavailable (private browsing, storage quota, etc.)
+  }
   return 'system';
 }
 
@@ -46,7 +50,11 @@ export function ThemeProvider(props: { children: ReactNode }): JSX.Element {
     const next = resolve(preference);
     setResolved(next);
     document.documentElement.classList.toggle('dark', next === 'dark');
-    window.localStorage.setItem(STORAGE_KEY, preference);
+    try {
+      window.localStorage.setItem(STORAGE_KEY, preference);
+    } catch {
+      // localStorage unavailable (private browsing, storage quota, etc.)
+    }
   }, [preference]);
 
   useEffect(() => {

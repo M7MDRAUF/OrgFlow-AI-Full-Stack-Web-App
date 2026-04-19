@@ -1,7 +1,12 @@
 // Tasks service. Scope via project + team + org. Members see own tasks + team
 // tasks in projects where they are a project member.
-import { Types, type FilterQuery } from 'mongoose';
 import type { TaskCommentResponseDto, TaskResponseDto } from '@orgflow/shared-types';
+import { Types, type FilterQuery } from 'mongoose';
+import type { AuthContext } from '../../middleware/auth-context.js';
+import { logAudit } from '../../utils/audit.js';
+import { errors } from '../../utils/errors.js';
+import { toSkipLimit, type Pagination } from '../../utils/pagination.js';
+import { ProjectModel } from '../projects/project.model.js';
 import {
   TaskCommentModel,
   TaskModel,
@@ -9,14 +14,12 @@ import {
   type TaskDoc,
   type TaskHydrated,
 } from './task.model.js';
-import { ProjectModel } from '../projects/project.model.js';
-import { errors } from '../../utils/errors.js';
-import type { AuthContext } from '../../middleware/auth-context.js';
 import type {
   CreateCommentInput,
   CreateTaskInput,
   ListTasksQuery,
   UpdateTaskInput,
+  UpdateTaskStatusInput,
 } from './task.schema.js';
 
 function assertObjectId(id: string, label: string): Types.ObjectId {
@@ -30,7 +33,7 @@ function isOverdue(doc: TaskHydrated): boolean {
   return doc.dueDate.getTime() < Date.now();
 }
 
-function toDto(doc: TaskHydrated): TaskResponseDto {
+function toDto(doc: TaskHydrated, commentCount: number): TaskResponseDto {
   return {
     id: doc.id as string,
     organizationId: doc.organizationId.toString(),
@@ -44,6 +47,7 @@ function toDto(doc: TaskHydrated): TaskResponseDto {
     priority: doc.priority,
     dueDate: doc.dueDate !== null ? doc.dueDate.toISOString() : null,
     overdue: isOverdue(doc),
+    commentCount,
     createdAt: doc.createdAt.toISOString(),
     updatedAt: doc.updatedAt.toISOString(),
   };
@@ -106,17 +110,18 @@ function canMutateTask(auth: AuthContext, doc: TaskHydrated): boolean {
 export async function listTasks(
   auth: AuthContext,
   query: ListTasksQuery,
-): Promise<TaskResponseDto[]> {
+  pagination: Pagination,
+): Promise<{ items: TaskResponseDto[]; total: number }> {
   const orgId = new Types.ObjectId(auth.organizationId);
   const filter: FilterQuery<TaskDoc> = { organizationId: orgId };
 
   if (auth.role === 'admin') {
     if (query.teamId !== undefined) filter.teamId = assertObjectId(query.teamId, 'teamId');
   } else if (auth.role === 'leader') {
-    if (auth.teamId === null) return [];
+    if (auth.teamId === null) return { items: [], total: 0 };
     filter.teamId = new Types.ObjectId(auth.teamId);
   } else {
-    if (auth.teamId === null) return [];
+    if (auth.teamId === null) return { items: [], total: 0 };
     filter.teamId = new Types.ObjectId(auth.teamId);
     // members: narrow to tasks assigned to them OR in projects where they belong.
     const memberProjects = await ProjectModel.find(
@@ -138,8 +143,24 @@ export async function listTasks(
     filter.assignedTo = assertObjectId(query.assignedTo, 'assignedTo');
   if (query.mine) filter.assignedTo = new Types.ObjectId(auth.userId);
 
-  const docs = await TaskModel.find(filter).sort({ updatedAt: -1 }).limit(500);
-  return docs.map(toDto);
+  const { skip, limit } = toSkipLimit(pagination);
+  const [docs, total] = await Promise.all([
+    TaskModel.find(filter).sort({ updatedAt: -1 }).skip(skip).limit(limit),
+    TaskModel.countDocuments(filter),
+  ]);
+
+  // Batch comment counts in one aggregation to avoid N+1 queries.
+  const taskIds = docs.map((d) => d._id);
+  const commentCounts = await TaskCommentModel.aggregate<{
+    _id: Types.ObjectId;
+    count: number;
+  }>([
+    { $match: { taskId: { $in: taskIds } } },
+    { $group: { _id: '$taskId', count: { $sum: 1 } } },
+  ]);
+  const countMap = new Map(commentCounts.map((c) => [c._id.toString(), c.count]));
+
+  return { items: docs.map((d) => toDto(d, countMap.get(d._id.toString()) ?? 0)), total };
 }
 
 async function loadTaskForAuth(auth: AuthContext, id: string): Promise<TaskHydrated> {
@@ -163,7 +184,8 @@ async function loadTaskForAuth(auth: AuthContext, id: string): Promise<TaskHydra
 
 export async function getTask(auth: AuthContext, id: string): Promise<TaskResponseDto> {
   const doc = await loadTaskForAuth(auth, id);
-  return toDto(doc);
+  const commentCount = await TaskCommentModel.countDocuments({ taskId: doc._id });
+  return toDto(doc, commentCount);
 }
 
 export async function createTask(
@@ -197,7 +219,12 @@ export async function createTask(
     priority: input.priority ?? 'medium',
     dueDate: input.dueDate !== undefined ? new Date(input.dueDate) : null,
   });
-  return toDto(doc);
+  logAudit(auth, {
+    action: 'task.create',
+    resourceId: doc.id as string,
+    meta: { taskId: doc.id as string, title: doc.title },
+  });
+  return toDto(doc, 0);
 }
 
 export async function updateTask(
@@ -237,7 +264,13 @@ export async function updateTask(
     }
   }
   await doc.save();
-  return toDto(doc);
+  const commentCount = await TaskCommentModel.countDocuments({ taskId: doc._id });
+  logAudit(auth, {
+    action: 'task.update',
+    resourceId: doc.id as string,
+    meta: { taskId: doc.id as string },
+  });
+  return toDto(doc, commentCount);
 }
 
 export async function deleteTask(auth: AuthContext, id: string): Promise<void> {
@@ -251,8 +284,29 @@ export async function deleteTask(auth: AuthContext, id: string): Promise<void> {
   } else {
     throw errors.forbidden('Members cannot delete tasks');
   }
-  await doc.deleteOne();
+  // DA-006: Delete comments before the task so if comment deletion fails,
+  // the task still exists and can be retried. Previous order left orphaned
+  // comments if comment deletion failed after task was already deleted.
   await TaskCommentModel.deleteMany({ taskId: doc._id });
+  await doc.deleteOne();
+  logAudit(auth, {
+    action: 'task.delete',
+    resourceId: doc.id as string,
+    meta: { taskId: doc.id as string },
+  });
+}
+
+export async function updateTaskStatus(
+  auth: AuthContext,
+  id: string,
+  input: UpdateTaskStatusInput,
+): Promise<TaskResponseDto> {
+  const doc = await loadTaskForAuth(auth, id);
+  if (!canMutateTask(auth, doc)) throw errors.forbidden('Cannot modify this task');
+  doc.status = input.status;
+  await doc.save();
+  const commentCount = await TaskCommentModel.countDocuments({ taskId: doc._id });
+  return toDto(doc, commentCount);
 }
 
 export async function listComments(
@@ -270,6 +324,19 @@ export async function createComment(
   input: CreateCommentInput,
 ): Promise<TaskCommentResponseDto> {
   const doc = await loadTaskForAuth(auth, taskId);
+  // H-004: TOCTOU narrowing. Between `loadTaskForAuth` and `create` the task
+  // could be reassigned to a different team/project or the member could be
+  // removed from the project. Re-verify that the task is still in-scope at
+  // write time; if not, the comment is rejected. This closes the window to a
+  // single round-trip rather than eliminating it entirely (would require a
+  // transaction), which is acceptable given comments are non-destructive.
+  const stillInScope = await TaskModel.exists({
+    _id: doc._id,
+    organizationId: new Types.ObjectId(auth.organizationId),
+  });
+  if (stillInScope === null) {
+    throw errors.notFound('Task not found');
+  }
   const comment = await TaskCommentModel.create({
     taskId: doc._id,
     userId: new Types.ObjectId(auth.userId),

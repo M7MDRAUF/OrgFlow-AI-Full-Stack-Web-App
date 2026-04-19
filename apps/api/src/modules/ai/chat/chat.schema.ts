@@ -10,3 +10,11 @@ export const chatRequestSchema = z.object({
 });
 
 export type ChatRequestInput = z.infer<typeof chatRequestSchema>;
+
+// BUG-002: Validate chat history query params at the boundary.
+export const chatHistoryQuerySchema = z.object({
+  cursor: z.string().regex(objectIdRegex).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(50),
+});
+
+export type ChatHistoryQuery = z.infer<typeof chatHistoryQuerySchema>;

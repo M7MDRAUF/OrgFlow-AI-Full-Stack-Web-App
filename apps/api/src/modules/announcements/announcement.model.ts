@@ -1,6 +1,6 @@
 // notes-agent — announcement model with read-state tracking.
-import { Schema, type Types, model, type HydratedDocument, type Model } from 'mongoose';
 import type { AnnouncementTargetType } from '@orgflow/shared-types';
+import { model, Schema, type HydratedDocument, type Model, type Types } from 'mongoose';
 
 export interface AnnouncementDoc {
   organizationId: Types.ObjectId;
@@ -31,6 +31,9 @@ const announcementSchema = new Schema<AnnouncementDoc>(
     targetId: { type: Schema.Types.ObjectId, required: true, index: true },
     title: { type: String, required: true, trim: true },
     body: { type: String, required: true },
+    // TODO(BUG-003): readBy is an unbounded array. Acceptable at university
+    // scale (<5 000 users per org). If the platform grows beyond that, migrate
+    // to a separate AnnouncementRead collection with { announcementId, userId }.
     readBy: { type: [Schema.Types.ObjectId], default: [] },
   },
   { timestamps: true },

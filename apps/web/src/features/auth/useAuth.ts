@@ -1,6 +1,5 @@
 // useAuth hook — react-query wrappers for login + session + invite completion.
 // Owned by auth-agent.
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   CompleteInviteRequestDto,
   CompleteInviteResponseDto,
@@ -9,10 +8,11 @@ import type {
   MeResponseDto,
   UserResponseDto,
 } from '@orgflow/shared-types';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 import { apiClient } from '../../lib/api-client.js';
+import { QUERY_KEYS } from '../../lib/query-keys.js';
 import { authStorage, type AuthProfile } from './storage.js';
-
-const ME_QUERY_KEY = ['auth', 'me'] as const;
 
 function toProfile(user: UserResponseDto): AuthProfile {
   return {
@@ -27,9 +27,11 @@ function toProfile(user: UserResponseDto): AuthProfile {
 
 export function useMe(): ReturnType<typeof useQuery<MeResponseDto>> {
   return useQuery<MeResponseDto>({
-    queryKey: ME_QUERY_KEY,
-    queryFn: async () => {
-      const res = await apiClient.get<{ success: true; data: MeResponseDto }>('/auth/me');
+    queryKey: QUERY_KEYS.me,
+    queryFn: async ({ signal }) => {
+      const res = await apiClient.get<{ success: true; data: MeResponseDto }>('/auth/me', {
+        signal,
+      });
       return res.data.data;
     },
     enabled: authStorage.getToken() !== null,
@@ -52,7 +54,10 @@ export function useLogin(): ReturnType<
     },
     onSuccess: (data) => {
       authStorage.set(data.token, toProfile(data.user));
-      qc.setQueryData<MeResponseDto>(ME_QUERY_KEY, { user: data.user });
+      qc.setQueryData<MeResponseDto>(QUERY_KEYS.me, { user: data.user });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Login failed');
     },
   });
 }
@@ -71,15 +76,26 @@ export function useCompleteInvite(): ReturnType<
     },
     onSuccess: (data) => {
       authStorage.set(data.token, toProfile(data.user));
-      qc.setQueryData<MeResponseDto>(ME_QUERY_KEY, { user: data.user });
+      qc.setQueryData<MeResponseDto>(QUERY_KEYS.me, { user: data.user });
+      toast.success('Account setup complete');
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Something went wrong');
     },
   });
 }
 
-export function useLogout(): () => void {
+export function useLogout(): () => Promise<void> {
   const qc = useQueryClient();
-  return () => {
+  return async () => {
+    // H-019: cancel any in-flight queries before clearing the cache so they
+    // cannot write post-logout data back into a new session. Remove the
+    // Authorization header from the shared axios instance so requests made
+    // before the redirect completes are not still signing with the old token.
+    await qc.cancelQueries();
+    qc.clear();
     authStorage.clear();
-    qc.removeQueries({ queryKey: ME_QUERY_KEY });
+    delete apiClient.defaults.headers.common.Authorization;
+    toast.success('Logged out');
   };
 }

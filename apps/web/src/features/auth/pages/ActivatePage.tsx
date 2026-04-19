@@ -1,7 +1,7 @@
 // Activate page — consumes invite token from ?token=, sets password. Owned by auth-agent.
+import { Button, Card, ErrorState, Field, Input } from '@orgflow/ui';
 import { useState, type FormEvent, type JSX } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
-import { Button, Card, ErrorState, Field, Input } from '@orgflow/ui';
 import { useCompleteInvite } from '../useAuth.js';
 
 export function ActivatePage(): JSX.Element {
@@ -52,6 +52,7 @@ export function ActivatePage(): JSX.Element {
                 value={password}
                 onChange={(e) => {
                   setPassword(e.target.value);
+                  if (mismatch) setMismatch(false);
                 }}
               />
             </Field>
@@ -66,6 +67,7 @@ export function ActivatePage(): JSX.Element {
                 value={confirm}
                 onChange={(e) => {
                   setConfirm(e.target.value);
+                  if (mismatch) setMismatch(false);
                 }}
               />
             </Field>

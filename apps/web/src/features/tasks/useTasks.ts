@@ -1,5 +1,4 @@
 // tasks-agent — react-query hooks for tasks + comments.
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   CreateTaskRequestDto,
   TaskCommentResponseDto,
@@ -8,9 +7,10 @@ import type {
   TaskStatus,
   UpdateTaskRequestDto,
 } from '@orgflow/shared-types';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 import { apiClient } from '../../lib/api-client.js';
-
-const TASKS_QUERY_KEY = ['tasks'] as const;
+import { QUERY_KEYS } from '../../lib/query-keys.js';
 
 export interface ListTasksFilters {
   projectId?: string;
@@ -25,8 +25,8 @@ export function useTasks(
   filters?: ListTasksFilters,
 ): ReturnType<typeof useQuery<TaskResponseDto[]>> {
   return useQuery<TaskResponseDto[]>({
-    queryKey: [...TASKS_QUERY_KEY, filters ?? {}],
-    queryFn: async () => {
+    queryKey: [...QUERY_KEYS.tasks, filters ?? {}],
+    queryFn: async ({ signal }) => {
       const params: Record<string, string> = {};
       if (filters?.projectId !== undefined) params['projectId'] = filters.projectId;
       if (filters?.teamId !== undefined) params['teamId'] = filters.teamId;
@@ -37,7 +37,7 @@ export function useTasks(
       const res = await apiClient.get<{
         success: true;
         data: { tasks: TaskResponseDto[] };
-      }>('/tasks', { params });
+      }>('/tasks', { params, signal });
       return res.data.data.tasks;
     },
   });
@@ -56,7 +56,11 @@ export function useCreateTask(): ReturnType<
       return res.data.data.task;
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: TASKS_QUERY_KEY });
+      void qc.invalidateQueries({ queryKey: QUERY_KEYS.tasks });
+      toast.success('Task created');
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Something went wrong');
     },
   });
 }
@@ -78,8 +82,44 @@ export function useUpdateTask(): ReturnType<
       );
       return res.data.data.task;
     },
+    // Optimistic update: immediately reflect the change in cache
+    // so Kanban drag-drop feels instant.
+    onMutate: async ({ id, input }) => {
+      await qc.cancelQueries({ queryKey: QUERY_KEYS.tasks });
+      const previous = qc.getQueriesData<TaskResponseDto[]>({ queryKey: QUERY_KEYS.tasks });
+      qc.setQueriesData<TaskResponseDto[]>({ queryKey: QUERY_KEYS.tasks }, (old) => {
+        if (!old) return old;
+        return old.map((t) => {
+          if (t.id !== id) return t;
+          const merged: TaskResponseDto = { ...t };
+          if (input.title !== undefined) merged.title = input.title;
+          if (input.description !== undefined) merged.description = input.description;
+          if (input.status !== undefined) merged.status = input.status;
+          if (input.priority !== undefined) merged.priority = input.priority;
+          if (input.dueDate !== undefined) merged.dueDate = input.dueDate;
+          if (input.assignedTo !== undefined) merged.assignedTo = input.assignedTo;
+          return merged;
+        });
+      });
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      // Rollback to snapshot on failure.
+      const ctx = context as
+        | { previous: [readonly unknown[], TaskResponseDto[] | undefined][] }
+        | undefined;
+      if (ctx?.previous) {
+        for (const [key, data] of ctx.previous) {
+          qc.setQueryData(key, data);
+        }
+      }
+      toast.error('Failed to update task');
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: QUERY_KEYS.tasks });
+    },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: TASKS_QUERY_KEY });
+      toast.success('Task updated');
     },
   });
 }
@@ -92,7 +132,11 @@ export function useDeleteTask(): ReturnType<typeof useMutation<{ deleted: true }
       return { deleted: true };
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: TASKS_QUERY_KEY });
+      void qc.invalidateQueries({ queryKey: QUERY_KEYS.tasks });
+      toast.success('Task deleted');
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Something went wrong');
     },
   });
 }
@@ -101,13 +145,13 @@ export function useTaskComments(
   taskId: string | null,
 ): ReturnType<typeof useQuery<TaskCommentResponseDto[]>> {
   return useQuery<TaskCommentResponseDto[]>({
-    queryKey: [...TASKS_QUERY_KEY, 'comments', taskId],
+    queryKey: [...QUERY_KEYS.tasks, 'comments', taskId],
     enabled: taskId !== null,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const res = await apiClient.get<{
         success: true;
         data: { comments: TaskCommentResponseDto[] };
-      }>(`/tasks/${taskId ?? ''}/comments`);
+      }>(`/tasks/${taskId ?? ''}/comments`, { signal });
       return res.data.data.comments;
     },
   });
@@ -131,7 +175,11 @@ export function useCreateComment(): ReturnType<
       return res.data.data.comment;
     },
     onSuccess: (_comment, vars) => {
-      void qc.invalidateQueries({ queryKey: [...TASKS_QUERY_KEY, 'comments', vars.taskId] });
+      void qc.invalidateQueries({ queryKey: [...QUERY_KEYS.tasks, 'comments', vars.taskId] });
+      toast.success('Comment added');
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Something went wrong');
     },
   });
 }

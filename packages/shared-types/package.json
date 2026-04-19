@@ -24,5 +24,13 @@
   "devDependencies": {
     "rimraf": "^6.0.1",
     "typescript": "^5.6.3"
+  },
+  "peerDependencies": {
+    "zod": "^3.23.0"
+  },
+  "peerDependenciesMeta": {
+    "zod": {
+      "optional": true
+    }
   }
 }

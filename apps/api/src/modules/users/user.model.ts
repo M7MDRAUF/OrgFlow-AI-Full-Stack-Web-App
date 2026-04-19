@@ -1,8 +1,8 @@
 // User model — scoped to organization + optional team. Holds role + status +
 // hashed password. Invitations reuse the same doc with status='pending' and an
 // invite token.
-import { Schema, type Types, model, type HydratedDocument, type Model } from 'mongoose';
 import type { UserRole, UserStatus } from '@orgflow/shared-types';
+import { model, Schema, type HydratedDocument, type Model, type Types } from 'mongoose';
 
 export type ThemePreference = 'light' | 'dark' | 'system';
 
@@ -53,6 +53,17 @@ const userSchema = new Schema<UserDoc>(
 );
 
 userSchema.index({ organizationId: 1, email: 1 }, { unique: true });
+userSchema.index({ organizationId: 1, teamId: 1 });
+// H-010: auto-clear stale invite tokens once they expire so the
+// inviteTokenHash index cannot be exhausted by abandoned invitations and
+// so that an attacker who later steals the DB cannot replay old tokens.
+userSchema.index(
+  { inviteExpiresAt: 1 },
+  {
+    expireAfterSeconds: 0,
+    partialFilterExpression: { status: 'pending', inviteExpiresAt: { $ne: null } },
+  },
+);
 
 export const UserModel: Model<UserDoc> = model<UserDoc>('User', userSchema);
 export type UserHydrated = HydratedDocument<UserDoc>;

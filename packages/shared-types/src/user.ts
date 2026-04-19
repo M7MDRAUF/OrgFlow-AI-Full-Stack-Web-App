@@ -14,6 +14,7 @@ export interface UserResponseDto {
   updatedAt: string;
 }
 
+/** @deprecated Superseded by InviteUserRequestDto — invite flow is used instead of direct creation. */
 export interface CreateUserRequestDto {
   name: string;
   email: string;

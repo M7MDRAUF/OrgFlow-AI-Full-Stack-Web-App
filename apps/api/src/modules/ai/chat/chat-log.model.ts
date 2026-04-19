@@ -1,10 +1,11 @@
 // rag-chat-agent — Chat log model (user + assistant messages with citations).
-import { Schema, type Types, model, type HydratedDocument, type Model } from 'mongoose';
 import type { AiSourceCitation } from '@orgflow/shared-types';
+import { model, Schema, type HydratedDocument, type Model, type Types } from 'mongoose';
 
 export interface ChatLogDoc {
   organizationId: Types.ObjectId;
   userId: Types.ObjectId;
+  teamId: Types.ObjectId | null;
   role: 'user' | 'assistant';
   content: string;
   sources: AiSourceCitation[];
@@ -21,6 +22,7 @@ const chatLogSchema = new Schema<ChatLogDoc>(
       index: true,
     },
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    teamId: { type: Schema.Types.ObjectId, ref: 'Team', default: null },
     role: { type: String, enum: ['user', 'assistant'], required: true },
     content: { type: String, required: true },
     sources: {

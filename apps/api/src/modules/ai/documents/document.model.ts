@@ -1,6 +1,6 @@
 // rag-ingest-agent — Document metadata model (per-file record).
-import { Schema, type Types, model, type HydratedDocument, type Model } from 'mongoose';
 import type { DocumentStatus, DocumentVisibility, UserRole } from '@orgflow/shared-types';
+import { model, Schema, type HydratedDocument, type Model, type Types } from 'mongoose';
 
 export interface DocumentDoc {
   organizationId: Types.ObjectId;
@@ -14,6 +14,7 @@ export interface DocumentDoc {
   status: DocumentStatus;
   allowedRoles: UserRole[];
   chunkCount: number | null;
+  rawText: string | null;
   error: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -49,6 +50,7 @@ const documentSchema = new Schema<DocumentDoc>(
       default: [],
     },
     chunkCount: { type: Number, default: null },
+    rawText: { type: String, default: null },
     error: { type: String, default: null },
   },
   { timestamps: true },

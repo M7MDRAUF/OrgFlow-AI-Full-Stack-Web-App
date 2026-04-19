@@ -1,14 +1,16 @@
 import type { Request, Response } from 'express';
-import { sendSuccess } from '../../utils/response.js';
 import { errors } from '../../utils/errors.js';
+import { paginationSchema } from '../../utils/pagination.js';
 import { requireParam } from '../../utils/request.js';
-import * as taskService from './task.service.js';
+import { sendSuccess } from '../../utils/response.js';
 import type {
   CreateCommentInput,
   CreateTaskInput,
   ListTasksQuery,
   UpdateTaskInput,
+  UpdateTaskStatusInput,
 } from './task.schema.js';
+import * as taskService from './task.service.js';
 
 function requireAuth(req: Request) {
   if (!req.auth) throw errors.unauthenticated();
@@ -16,11 +18,24 @@ function requireAuth(req: Request) {
 }
 
 export async function listTasksHandler(req: Request, res: Response): Promise<void> {
-  const tasks = await taskService.listTasks(
+  const pagination = paginationSchema.parse(req.query);
+  const { items, total } = await taskService.listTasks(
     requireAuth(req),
     req.query as unknown as ListTasksQuery,
+    pagination,
   );
-  sendSuccess(res, { tasks });
+  sendSuccess(
+    res,
+    { tasks: items },
+    {
+      meta: {
+        page: pagination.page,
+        pageSize: pagination.pageSize,
+        total,
+        hasMore: pagination.page * pagination.pageSize < total,
+      },
+    },
+  );
 }
 
 export async function getTaskHandler(req: Request, res: Response): Promise<void> {
@@ -45,6 +60,15 @@ export async function updateTaskHandler(req: Request, res: Response): Promise<vo
 export async function deleteTaskHandler(req: Request, res: Response): Promise<void> {
   await taskService.deleteTask(requireAuth(req), requireParam(req, 'id'));
   sendSuccess(res, { deleted: true });
+}
+
+export async function updateTaskStatusHandler(req: Request, res: Response): Promise<void> {
+  const task = await taskService.updateTaskStatus(
+    requireAuth(req),
+    requireParam(req, 'id'),
+    req.body as UpdateTaskStatusInput,
+  );
+  sendSuccess(res, { task });
 }
 
 export async function listCommentsHandler(req: Request, res: Response): Promise<void> {

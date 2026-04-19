@@ -1,6 +1,9 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": {
+    "rootDir": "..",
+    "noEmit": true,
+    "composite": false,
     "types": ["vite/client", "@testing-library/jest-dom", "node"]
   },
   "include": ["**/*.ts", "**/*.tsx", "../src/**/*.ts", "../src/**/*.tsx"]

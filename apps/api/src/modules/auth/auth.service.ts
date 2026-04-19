@@ -1,8 +1,5 @@
 // Auth service — business logic for login, /me, invite, complete-invite.
 // Owned by auth-agent (AGENTS.md §4.5).
-import { randomBytes, createHash } from 'node:crypto';
-import bcrypt from 'bcryptjs';
-import { Types } from 'mongoose';
 import type {
   CompleteInviteResponseDto,
   InviteUserResponseDto,
@@ -10,10 +7,15 @@ import type {
   MeResponseDto,
   UserResponseDto,
 } from '@orgflow/shared-types';
-import { UserModel, type UserHydrated } from '../users/user.model.js';
-import { TeamModel } from '../teams/team.model.js';
+import bcrypt from 'bcryptjs';
+import { Types } from 'mongoose';
+import { createHash, randomBytes } from 'node:crypto';
+import type { AuthContext } from '../../middleware/auth-context.js';
 import { signAuthToken } from '../../middleware/auth.middleware.js';
+import { logAudit } from '../../utils/audit.js';
 import { errors } from '../../utils/errors.js';
+import { TeamModel } from '../teams/team.model.js';
+import { UserModel, type UserHydrated } from '../users/user.model.js';
 import type { CompleteInviteInput, InviteInput, LoginInput } from './auth.schema.js';
 
 const INVITE_TOKEN_BYTES = 32;
@@ -52,12 +54,25 @@ function issueToken(user: UserHydrated): string {
 export async function login(input: LoginInput): Promise<LoginResponseDto> {
   const user = await UserModel.findOne({ email: input.email });
   if (user?.status !== 'active' || user.passwordHash === null) {
+    // Equalise timing with a dummy bcrypt compare to prevent user-enumeration
+    // side-channel attacks (attacker can't distinguish "no user" from "wrong password").
+    await bcrypt.compare(
+      input.password,
+      '$2b$12$0000000000000000000000000000000000000000000000000000',
+    );
     throw errors.unauthenticated('Invalid credentials');
   }
   const ok = await bcrypt.compare(input.password, user.passwordHash);
   if (!ok) {
     throw errors.unauthenticated('Invalid credentials');
   }
+  const loginAuth: AuthContext = {
+    userId: user.id as string,
+    organizationId: user.organizationId.toString(),
+    teamId: user.teamId ? user.teamId.toString() : null,
+    role: user.role,
+  };
+  logAudit(loginAuth, { action: 'auth.login', resourceId: user.id as string, meta: {} });
   return { token: issueToken(user), user: toUserResponseDto(user) };
 }
 
@@ -73,6 +88,7 @@ export async function getCurrentUser(userId: string): Promise<MeResponseDto> {
 }
 
 export async function inviteUser(
+  auth: AuthContext,
   organizationId: string,
   input: InviteInput,
 ): Promise<InviteUserResponseDto> {
@@ -117,6 +133,12 @@ export async function inviteUser(
     inviteExpiresAt: expiresAt,
   });
 
+  logAudit(auth, {
+    action: 'user.invite',
+    resourceId: user.id as string,
+    meta: { invitedEmail: input.email },
+  });
+
   return { user: toUserResponseDto(user), inviteToken };
 }
 
@@ -139,4 +161,9 @@ export async function completeInvite(
   user.inviteExpiresAt = null;
   await user.save();
   return { token: issueToken(user), user: toUserResponseDto(user) };
+}
+
+export function logout(auth: AuthContext): { loggedOut: true } {
+  logAudit(auth, { action: 'auth.logout', resourceId: null });
+  return { loggedOut: true };
 }

@@ -1,20 +1,21 @@
 // org-agent — react-query hooks for teams admin.
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   CreateTeamRequestDto,
   TeamResponseDto,
   UpdateTeamRequestDto,
 } from '@orgflow/shared-types';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 import { apiClient } from '../../lib/api-client.js';
-
-const TEAMS_QUERY_KEY = ['teams'] as const;
+import { QUERY_KEYS } from '../../lib/query-keys.js';
 
 export function useTeams(): ReturnType<typeof useQuery<TeamResponseDto[]>> {
   return useQuery<TeamResponseDto[]>({
-    queryKey: TEAMS_QUERY_KEY,
-    queryFn: async () => {
+    queryKey: QUERY_KEYS.teams,
+    queryFn: async ({ signal }) => {
       const res = await apiClient.get<{ success: true; data: { teams: TeamResponseDto[] } }>(
         '/teams',
+        { signal },
       );
       return res.data.data.teams;
     },
@@ -34,7 +35,11 @@ export function useCreateTeam(): ReturnType<
       return res.data.data.team;
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: TEAMS_QUERY_KEY });
+      void qc.invalidateQueries({ queryKey: QUERY_KEYS.teams });
+      toast.success('Team created');
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Something went wrong');
     },
   });
 }
@@ -57,7 +62,11 @@ export function useUpdateTeam(): ReturnType<
       return res.data.data.team;
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: TEAMS_QUERY_KEY });
+      void qc.invalidateQueries({ queryKey: QUERY_KEYS.teams });
+      toast.success('Team updated');
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Something went wrong');
     },
   });
 }
@@ -70,8 +79,14 @@ export function useDeleteTeam(): ReturnType<typeof useMutation<{ deleted: true }
       return { deleted: true };
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: TEAMS_QUERY_KEY });
-      void qc.invalidateQueries({ queryKey: ['users'] });
+      void qc.invalidateQueries({ queryKey: QUERY_KEYS.teams });
+      void qc.invalidateQueries({ queryKey: QUERY_KEYS.users });
+      void qc.invalidateQueries({ queryKey: QUERY_KEYS.projects });
+      void qc.invalidateQueries({ queryKey: QUERY_KEYS.tasks });
+      toast.success('Team deleted');
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Something went wrong');
     },
   });
 }

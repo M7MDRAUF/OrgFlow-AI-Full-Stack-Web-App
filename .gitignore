@@ -26,6 +26,22 @@ pnpm-debug.log*
 coverage/
 .nyc_output/
 
+# ── Academic report / paper artifacts ─────────────────────────
+# All TP01 / TP02 source files, generators, verifiers, and output
+# documents are excluded from version control.  They live at the
+# workspace root and in the docx/ skill folder but are never part
+# of the OrgFlow AI application codebase.
+docx/
+TP01*.md
+TP02*.md
+TP01*.docx
+TP02*.docx
+generate_tp02*.py
+generate_tp02*.cjs
+generate_tp02*.js
+verify_tp02*.py
+verify_tp02*.js
+*.venv/
 # editor
 .DS_Store
 Thumbs.db
@@ -37,3 +53,34 @@ Thumbs.db
 
 # uploads (local dev)
 apps/api/uploads/
+
+# generated artifacts in source dirs (tsc output that should go to dist/)
+apps/api/src/**/*.js
+apps/api/src/**/*.js.map
+apps/api/src/**/*.d.ts
+apps/api/src/**/*.d.ts.map
+apps/api/test/**/*.js
+apps/api/test/**/*.js.map
+apps/api/test/**/*.d.ts
+apps/api/test/**/*.d.ts.map
+apps/api/scripts/**/*.js
+apps/api/scripts/**/*.js.map
+apps/api/scripts/**/*.d.ts
+apps/api/scripts/**/*.d.ts.map
+apps/web/test/**/*.js
+apps/web/test/**/*.js.map
+packages/shared-types/src/**/*.js
+packages/shared-types/src/**/*.js.map
+packages/shared-types/src/**/*.d.ts
+packages/shared-types/src/**/*.d.ts.map
+apps/web/vite.config.d.ts
+apps/web/vitest.config.d.ts
+apps/web/vite.config.js
+apps/web/vitest.config.js
+apps/api/vitest.config.d.ts
+apps/api/vitest.config.js
+packages/ui/tsup.config.d.ts
+packages/ui/tsup.config.js
+
+# scratch / temp
+test-doc.txt

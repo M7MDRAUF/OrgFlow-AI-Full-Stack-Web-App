@@ -1,28 +1,12 @@
-import { useMemo, useState, type FormEvent, type JSX } from 'react';
-import {
-  Badge,
-  Button,
-  Card,
-  EmptyState,
-  ErrorState,
-  Field,
-  Input,
-  Modal,
-  Select,
-  Skeleton,
-  Textarea,
-} from '@orgflow/ui';
-import type {
-  AnnouncementResponseDto,
-  AnnouncementTargetType,
-  CreateAnnouncementRequestDto,
-} from '@orgflow/shared-types';
+import { type AnnouncementResponseDto, type AnnouncementTargetType } from '@orgflow/shared-types';
+import { Badge, Button, Card, EmptyState, ErrorState, Skeleton } from '@orgflow/ui';
+import { useState, type JSX } from 'react';
+import { ConfirmDialog } from '../../components/ConfirmDialog.js';
 import { authStorage } from '../auth/storage.js';
-import { useTeams } from '../teams/useTeams.js';
-import { useUsers } from '../users/useUsers.js';
+import { CreateAnnouncementModal } from './CreateAnnouncementModal.js';
+import { EditAnnouncementModal } from './EditAnnouncementModal.js';
 import {
   useAnnouncements,
-  useCreateAnnouncement,
   useDeleteAnnouncement,
   useMarkAnnouncementRead,
 } from './useAnnouncements.js';
@@ -32,12 +16,14 @@ export function AnnouncementsPage(): JSX.Element {
   const role = profile?.role ?? 'member';
   const canCreate = role === 'admin' || role === 'leader';
 
-  const [unreadOnly, setUnreadOnly] = useState(false);
+  const [unreadOnly, setUnreadOnly] = useState(role === 'member');
   const [createOpen, setCreateOpen] = useState(false);
+  const [editing, setEditing] = useState<AnnouncementResponseDto | null>(null);
 
   const listQuery = useAnnouncements({ unreadOnly });
   const markRead = useMarkAnnouncementRead();
   const deleteMutation = useDeleteAnnouncement();
+  const [confirmDelete, setConfirmDelete] = useState<AnnouncementResponseDto | null>(null);
 
   if (listQuery.isLoading) return <Skeleton className="h-40" />;
   if (listQuery.isError) {
@@ -71,8 +57,9 @@ export function AnnouncementsPage(): JSX.Element {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex items-center gap-2 text-sm" htmlFor="unread-only-toggle">
             <input
+              id="unread-only-toggle"
               type="checkbox"
               checked={unreadOnly}
               onChange={(e) => {
@@ -106,10 +93,11 @@ export function AnnouncementsPage(): JSX.Element {
                 onMarkRead={() => {
                   markRead.mutate(a.id);
                 }}
+                onEdit={() => {
+                  setEditing(a);
+                }}
                 onDelete={() => {
-                  if (window.confirm('Delete this announcement?')) {
-                    deleteMutation.mutate(a.id);
-                  }
+                  setConfirmDelete(a);
                 }}
               />
             </li>
@@ -125,6 +113,28 @@ export function AnnouncementsPage(): JSX.Element {
           }}
         />
       ) : null}
+
+      {editing !== null ? (
+        <EditAnnouncementModal
+          announcement={editing}
+          onClose={() => {
+            setEditing(null);
+          }}
+        />
+      ) : null}
+
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        title="Delete announcement"
+        message="Are you sure you want to delete this announcement?"
+        onConfirm={() => {
+          if (confirmDelete !== null) deleteMutation.mutate(confirmDelete.id);
+          setConfirmDelete(null);
+        }}
+        onCancel={() => {
+          setConfirmDelete(null);
+        }}
+      />
     </div>
   );
 }
@@ -134,6 +144,7 @@ interface AnnouncementItemProps {
   currentUserId: string;
   currentRole: 'admin' | 'leader' | 'member';
   onMarkRead: () => void;
+  onEdit: () => void;
   onDelete: () => void;
 }
 
@@ -142,9 +153,10 @@ function AnnouncementItem({
   currentUserId,
   currentRole,
   onMarkRead,
+  onEdit,
   onDelete,
 }: AnnouncementItemProps): JSX.Element {
-  const canDelete = currentRole === 'admin' || announcement.createdBy === currentUserId;
+  const canModify = currentRole === 'admin' || announcement.createdBy === currentUserId;
   return (
     <Card>
       <div className="flex flex-col gap-2">
@@ -160,7 +172,12 @@ function AnnouncementItem({
                 Mark read
               </Button>
             ) : null}
-            {canDelete ? (
+            {canModify ? (
+              <Button variant="secondary" size="sm" onClick={onEdit}>
+                Edit
+              </Button>
+            ) : null}
+            {canModify ? (
               <Button variant="danger" size="sm" onClick={onDelete}>
                 Delete
               </Button>
@@ -170,7 +187,7 @@ function AnnouncementItem({
         <p className="whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-300">
           {announcement.body}
         </p>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-slate-500 dark:text-slate-400">
           {new Date(announcement.createdAt).toLocaleString()}
         </p>
       </div>
@@ -182,155 +199,4 @@ function targetBadgeTone(t: AnnouncementTargetType): 'default' | 'info' | 'succe
   if (t === 'organization') return 'info';
   if (t === 'team') return 'success';
   return 'warning';
-}
-
-interface CreateAnnouncementModalProps {
-  role: 'admin' | 'leader' | 'member';
-  onClose: () => void;
-}
-
-function CreateAnnouncementModal({ role, onClose }: CreateAnnouncementModalProps): JSX.Element {
-  const profile = authStorage.getProfile();
-  const teamsQuery = useTeams();
-  const usersQuery = useUsers();
-  const createMutation = useCreateAnnouncement();
-
-  const allowedTargetTypes: AnnouncementTargetType[] = useMemo(() => {
-    if (role === 'admin') return ['organization', 'team', 'user'];
-    return ['team', 'user'];
-  }, [role]);
-
-  const [targetType, setTargetType] = useState<AnnouncementTargetType>(
-    allowedTargetTypes[0] ?? 'team',
-  );
-  const [targetId, setTargetId] = useState('');
-  const [title, setTitle] = useState('');
-  const [body, setBody] = useState('');
-  const [error, setError] = useState<string | null>(null);
-
-  const teamOptions = useMemo(() => {
-    const teams = teamsQuery.data ?? [];
-    if (role === 'leader' && profile?.teamId !== null && profile?.teamId !== undefined) {
-      return teams
-        .filter((t) => t.id === profile.teamId)
-        .map((t) => ({ value: t.id, label: t.name }));
-    }
-    return teams.map((t) => ({ value: t.id, label: t.name }));
-  }, [teamsQuery.data, role, profile]);
-
-  const userOptions = useMemo(
-    () =>
-      (usersQuery.data ?? []).map((u) => ({
-        value: u.id,
-        label: `${u.name} (${u.email})`,
-      })),
-    [usersQuery.data],
-  );
-
-  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setError(null);
-    let resolvedTargetId = targetId;
-    if (targetType === 'organization') {
-      resolvedTargetId = profile?.organizationId ?? '';
-    }
-    if (resolvedTargetId === '') {
-      setError('Select a target.');
-      return;
-    }
-    const input: CreateAnnouncementRequestDto = {
-      targetType,
-      targetId: resolvedTargetId,
-      title,
-      body,
-    };
-    createMutation.mutate(input, {
-      onSuccess: () => {
-        onClose();
-      },
-      onError: (err: Error) => {
-        setError(err.message);
-      },
-    });
-  };
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title="New announcement"
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" form="create-announcement-form" loading={createMutation.isPending}>
-            Post
-          </Button>
-        </>
-      }
-    >
-      <form id="create-announcement-form" className="flex flex-col gap-3" onSubmit={handleSubmit}>
-        <Field label="Target type" htmlFor="targetType">
-          <Select
-            id="targetType"
-            value={targetType}
-            options={allowedTargetTypes.map((t) => ({ value: t, label: t }))}
-            onChange={(e) => {
-              setTargetType(e.target.value as AnnouncementTargetType);
-              setTargetId('');
-            }}
-          />
-        </Field>
-        {targetType === 'team' ? (
-          <Field label="Team" htmlFor="team">
-            <Select
-              id="team"
-              value={targetId}
-              options={[{ value: '', label: 'Select team…' }, ...teamOptions]}
-              onChange={(e) => {
-                setTargetId(e.target.value);
-              }}
-            />
-          </Field>
-        ) : null}
-        {targetType === 'user' ? (
-          <Field label="User" htmlFor="user">
-            <Select
-              id="user"
-              value={targetId}
-              options={[{ value: '', label: 'Select user…' }, ...userOptions]}
-              onChange={(e) => {
-                setTargetId(e.target.value);
-              }}
-            />
-          </Field>
-        ) : null}
-        <Field label="Title" htmlFor="title">
-          <Input
-            id="title"
-            value={title}
-            required
-            maxLength={200}
-            onChange={(e) => {
-              setTitle(e.target.value);
-            }}
-          />
-        </Field>
-        <Field label="Body" htmlFor="body">
-          <Textarea
-            id="body"
-            value={body}
-            required
-            rows={6}
-            maxLength={10000}
-            onChange={(e) => {
-              setBody(e.target.value);
-            }}
-          />
-        </Field>
-        {error !== null ? <p className="text-sm text-rose-600">{error}</p> : null}
-      </form>
-    </Modal>
-  );
 }

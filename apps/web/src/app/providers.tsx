@@ -1,26 +1,31 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useMemo, type JSX, type ReactNode } from 'react';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { type JSX, type ReactNode } from 'react';
+import { Toaster } from 'react-hot-toast';
 import { BrowserRouter } from 'react-router-dom';
+import { useCrossTabAuthSync } from '../features/auth/use-cross-tab-sync.js';
 import { ThemeProvider } from '../features/theme/ThemeProvider.js';
+import { queryClient } from '../lib/query-client.js';
+
+function AuthSyncGate(props: { children: ReactNode }): JSX.Element {
+  useCrossTabAuthSync();
+  return <>{props.children}</>;
+}
 
 export function AppProviders(props: { children: ReactNode }): JSX.Element {
-  const queryClient = useMemo(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          queries: {
-            retry: 1,
-            refetchOnWindowFocus: false,
-            staleTime: 30_000,
-          },
-        },
-      }),
-    [],
-  );
   return (
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
-        <BrowserRouter>{props.children}</BrowserRouter>
+        <BrowserRouter>
+          <AuthSyncGate>{props.children}</AuthSyncGate>
+        </BrowserRouter>
+        <Toaster
+          position="top-right"
+          toastOptions={{
+            duration: 4000,
+            style: { borderRadius: '8px', fontSize: '14px' },
+            error: { duration: 6000 },
+          }}
+        />
       </QueryClientProvider>
     </ThemeProvider>
   );

@@ -40,6 +40,7 @@ export interface ChatAnswerPayload {
   answer: string;
   sources: AiSourceCitation[];
   durationMs: number;
+  usedFallback: boolean;
 }
 
 export interface ChatRequestDto {
@@ -68,4 +69,10 @@ export interface ChatHistoryMessageDto {
   content: string;
   sources: AiSourceCitation[];
   createdAt: string;
+}
+
+export type OllamaConnectionStatus = 'connected' | 'disconnected';
+
+export interface OllamaHealthResponse {
+  status: OllamaConnectionStatus;
 }

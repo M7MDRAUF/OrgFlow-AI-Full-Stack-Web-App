@@ -1,13 +1,14 @@
 // rag-chat-agent — AI Assistant page with conversation thread + citation pills.
-import { useState, type FormEvent, type JSX } from 'react';
+import type { AiSourceCitation, OllamaConnectionStatus } from '@orgflow/shared-types';
 import { Badge, Button, Card, EmptyState, ErrorState, Skeleton, Textarea } from '@orgflow/ui';
-import type { AiSourceCitation } from '@orgflow/shared-types';
-import { useAskAssistant, useChatHistory } from './useChat.js';
+import { useState, type FormEvent, type JSX } from 'react';
+import { useAskAssistant, useChatHistory, useOllamaStatus } from './useChat.js';
 
 export function AssistantPage(): JSX.Element {
   const [question, setQuestion] = useState<string>('');
   const history = useChatHistory();
   const ask = useAskAssistant();
+  const ollamaStatus = useOllamaStatus();
 
   const submit = (e: FormEvent<HTMLFormElement>): void => {
     e.preventDefault();
@@ -48,7 +49,10 @@ export function AssistantPage(): JSX.Element {
   return (
     <div className="flex flex-col gap-4">
       <header>
-        <h1 className="text-2xl font-semibold">AI Assistant</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-semibold">AI Assistant</h1>
+          <OllamaStatusDot status={ollamaStatus.status} />
+        </div>
         <p className="text-sm text-slate-500 dark:text-slate-400">
           Ask questions about documents you have access to. Answers are grounded in sources you can
           see.
@@ -146,5 +150,24 @@ function MessageBubble({ role, content, sources, createdAt }: MessageBubbleProps
         ) : null}
       </div>
     </Card>
+  );
+}
+
+const STATUS_CONFIG: Record<
+  OllamaConnectionStatus | 'checking',
+  { dotClass: string; label: string }
+> = {
+  connected: { dotClass: 'bg-emerald-500', label: 'Connected' },
+  disconnected: { dotClass: 'bg-rose-500', label: 'Disconnected' },
+  checking: { dotClass: 'bg-slate-400 animate-pulse', label: 'Checking...' },
+};
+
+function OllamaStatusDot({ status }: { status: OllamaConnectionStatus | 'checking' }): JSX.Element {
+  const { dotClass, label } = STATUS_CONFIG[status];
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-600 dark:border-slate-700 dark:text-slate-300">
+      <span className={`inline-block h-2 w-2 rounded-full ${dotClass}`} aria-hidden="true" />
+      {label}
+    </span>
   );
 }

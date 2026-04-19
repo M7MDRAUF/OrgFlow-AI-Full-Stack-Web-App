@@ -26,15 +26,34 @@ export function Modal(props: PropsWithChildren<ModalProps>): JSX.Element | null 
   useEffect(() => {
     if (!open) return;
     previousFocusRef.current = document.activeElement as HTMLElement | null;
+    const focusableSelector =
+      'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
     const handleKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (event.key === 'Tab') {
+        const container = containerRef.current;
+        if (container === null) return;
+        const focusable = Array.from(container.querySelectorAll<HTMLElement>(focusableSelector));
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (first === undefined || last === undefined) return;
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
     };
     window.addEventListener('keydown', handleKey);
     const container = containerRef.current;
     if (container !== null) {
-      const first = container.querySelector<HTMLElement>(
-        'input, select, textarea, button, [href], [tabindex]:not([tabindex="-1"])',
-      );
+      const first = container.querySelector<HTMLElement>(focusableSelector);
       first?.focus();
     }
     return () => {

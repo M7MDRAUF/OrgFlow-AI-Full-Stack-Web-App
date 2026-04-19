@@ -1,11 +1,13 @@
 // notes-agent — announcements with targeting (organization/team/user) and read-state.
+import type { AnnouncementResponseDto, UnreadCountDto } from '@orgflow/shared-types';
 import { Types } from 'mongoose';
-import type { AnnouncementResponseDto } from '@orgflow/shared-types';
-import { AnnouncementModel, type AnnouncementHydrated } from './announcement.model.js';
+import type { AuthContext } from '../../middleware/auth-context.js';
+import { logAudit } from '../../utils/audit.js';
+import { errors } from '../../utils/errors.js';
+import { toSkipLimit, type Pagination } from '../../utils/pagination.js';
 import { TeamModel } from '../teams/team.model.js';
 import { UserModel } from '../users/user.model.js';
-import { errors } from '../../utils/errors.js';
-import type { AuthContext } from '../../middleware/auth-context.js';
+import { AnnouncementModel, type AnnouncementHydrated } from './announcement.model.js';
 import type {
   CreateAnnouncementInput,
   ListAnnouncementsQuery,
@@ -73,31 +75,37 @@ function assertCanCreate(
 export async function listAnnouncements(
   auth: AuthContext,
   query: ListAnnouncementsQuery,
-): Promise<AnnouncementResponseDto[]> {
+  pagination: Pagination,
+): Promise<{ items: AnnouncementResponseDto[]; total: number }> {
   const orgId = new Types.ObjectId(auth.organizationId);
   const userId = new Types.ObjectId(auth.userId);
 
-  const targetClauses: Record<string, unknown>[] = [
-    { targetType: 'organization', targetId: orgId },
-    { targetType: 'user', targetId: userId },
-  ];
-  if (auth.teamId !== null) {
-    targetClauses.push({
-      targetType: 'team',
-      targetId: new Types.ObjectId(auth.teamId),
-    });
-  }
+  const filter: Record<string, unknown> = { organizationId: orgId };
 
-  const filter: Record<string, unknown> = {
-    organizationId: orgId,
-    $or: targetClauses,
-  };
+  // Admins see all announcements in their org; others are scoped by target.
+  if (auth.role !== 'admin') {
+    const targetClauses: Record<string, unknown>[] = [
+      { targetType: 'organization', targetId: orgId },
+      { targetType: 'user', targetId: userId },
+    ];
+    if (auth.teamId !== null) {
+      targetClauses.push({
+        targetType: 'team',
+        targetId: new Types.ObjectId(auth.teamId),
+      });
+    }
+    filter['$or'] = targetClauses;
+  }
   if (query.unreadOnly) {
     filter['readBy'] = { $ne: userId };
   }
 
-  const docs = await AnnouncementModel.find(filter).sort({ createdAt: -1 }).limit(100);
-  return docs.map((d) => toDto(d, userId));
+  const { skip, limit } = toSkipLimit(pagination);
+  const [docs, total] = await Promise.all([
+    AnnouncementModel.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+    AnnouncementModel.countDocuments(filter),
+  ]);
+  return { items: docs.map((d) => toDto(d, userId)), total };
 }
 
 export async function getAnnouncement(
@@ -114,6 +122,8 @@ export async function getAnnouncement(
 }
 
 function assertCanView(auth: AuthContext, doc: AnnouncementHydrated): void {
+  // Admins can view any announcement within their organization.
+  if (auth.role === 'admin') return;
   if (doc.targetType === 'organization') return;
   if (doc.targetType === 'team') {
     if (auth.teamId === null || doc.targetId.toString() !== auth.teamId) {
@@ -145,6 +155,11 @@ export async function createAnnouncement(
     body: input.body,
     readBy: [userId],
   });
+  logAudit(auth, {
+    action: 'announcement.create',
+    resourceId: doc.id as string,
+    meta: { announcementId: doc.id as string, title: doc.title },
+  });
   return toDto(doc, userId);
 }
 
@@ -164,6 +179,11 @@ export async function updateAnnouncement(
   if (input.title !== undefined) doc.title = input.title;
   if (input.body !== undefined) doc.body = input.body;
   await doc.save();
+  logAudit(auth, {
+    action: 'announcement.update',
+    resourceId: doc.id as string,
+    meta: { announcementId: doc.id as string },
+  });
   return toDto(doc, userId);
 }
 
@@ -179,6 +199,11 @@ export async function deleteAnnouncement(
     throw errors.forbidden('Only the author or an admin can delete this announcement');
   }
   await doc.deleteOne();
+  logAudit(auth, {
+    action: 'announcement.delete',
+    resourceId: doc.id as string,
+    meta: { announcementId: doc.id as string },
+  });
   return { deleted: true };
 }
 
@@ -192,9 +217,40 @@ export async function markAnnouncementRead(
   const doc = await AnnouncementModel.findOne({ _id: announcementId, organizationId: orgId });
   if (!doc) throw errors.notFound('Announcement not found');
   assertCanView(auth, doc);
-  if (!doc.readBy.some((u) => u.equals(userId))) {
-    doc.readBy.push(userId);
-    await doc.save();
+  // Atomic $addToSet avoids TOCTOU race when concurrent requests mark the
+  // same announcement as read — no duplicate entries possible.
+  await AnnouncementModel.updateOne({ _id: announcementId }, { $addToSet: { readBy: userId } });
+  // Re-read to return fresh state (readBy now guaranteed to include userId).
+  const updated = await AnnouncementModel.findById(announcementId);
+  if (!updated) throw errors.notFound('Announcement not found');
+  return toDto(updated, userId);
+}
+
+export async function getUnreadCount(auth: AuthContext): Promise<UnreadCountDto> {
+  const orgId = new Types.ObjectId(auth.organizationId);
+  const userId = new Types.ObjectId(auth.userId);
+
+  const filter: Record<string, unknown> = {
+    organizationId: orgId,
+    readBy: { $ne: userId },
+  };
+
+  // Admins see all; others scoped by target.
+  if (auth.role !== 'admin') {
+    const targetClauses: Record<string, unknown>[] = [
+      { targetType: 'organization', targetId: orgId },
+      { targetType: 'user', targetId: userId },
+    ];
+    if (auth.teamId !== null) {
+      targetClauses.push({
+        targetType: 'team',
+        targetId: new Types.ObjectId(auth.teamId),
+      });
+    }
+    filter['$or'] = targetClauses;
   }
-  return toDto(doc, userId);
+
+  const count = await AnnouncementModel.countDocuments(filter);
+
+  return { count };
 }

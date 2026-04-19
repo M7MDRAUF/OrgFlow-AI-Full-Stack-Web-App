@@ -1,14 +1,14 @@
 // dashboard-agent — aggregation service. Reads only; never mutates domain state.
-import { Types } from 'mongoose';
 import type {
   AdminDashboardResponseDto,
   DashboardResponseDto,
   LeaderDashboardResponseDto,
   MemberDashboardResponseDto,
 } from '@orgflow/shared-types';
+import { Types } from 'mongoose';
 import type { AuthContext } from '../../middleware/auth-context.js';
-import { TaskModel, type TaskDoc } from '../tasks/task.model.js';
 import { ProjectModel } from '../projects/project.model.js';
+import { TaskModel, type TaskDoc } from '../tasks/task.model.js';
 import { TeamModel } from '../teams/team.model.js';
 import { UserModel } from '../users/user.model.js';
 
@@ -20,8 +20,7 @@ interface TaskAggregate {
   overdue: number;
 }
 
-async function aggregateTasks(match: Record<string, unknown>): Promise<TaskAggregate> {
-  const now = new Date();
+async function aggregateTasks(match: Record<string, unknown>, now: Date): Promise<TaskAggregate> {
   const [total, todo, inProgress, done, overdue] = await Promise.all([
     TaskModel.countDocuments(match),
     TaskModel.countDocuments({ ...match, status: 'todo' }),
@@ -37,38 +36,60 @@ async function aggregateTasks(match: Record<string, unknown>): Promise<TaskAggre
 }
 
 async function adminDashboard(auth: AuthContext): Promise<AdminDashboardResponseDto> {
+  // F-005: capture `now` ONCE per dashboard request so every overdue
+  // computation inside this boundary agrees. Fan-out queries otherwise drift
+  // by tens of ms and can produce inconsistent overdue totals.
+  const now = new Date();
   const orgId = new Types.ObjectId(auth.organizationId);
   const match = { organizationId: orgId };
   const [teams, users, projects, taskAgg] = await Promise.all([
     TeamModel.countDocuments(match),
     UserModel.countDocuments(match),
     ProjectModel.countDocuments(match),
-    aggregateTasks(match),
+    aggregateTasks(match, now),
   ]);
 
   const teamsList = await TeamModel.find(match).sort({ name: 1 }).limit(50);
-  const now = new Date();
-  const byTeam = await Promise.all(
-    teamsList.map(async (t) => {
-      const teamMatch = { organizationId: orgId, teamId: t._id };
-      const [projectCount, taskCount, overdueCount] = await Promise.all([
-        ProjectModel.countDocuments(teamMatch),
-        TaskModel.countDocuments(teamMatch),
-        TaskModel.countDocuments({
-          ...teamMatch,
+  const teamIds = teamsList.map((t) => t._id);
+
+  // N+1 fix: batch-aggregate project/task/overdue counts per team in 3 queries
+  // instead of 3 × N sequential countDocuments calls.
+  const [projectsByTeam, tasksByTeam, overdueByTeam] = await Promise.all([
+    ProjectModel.aggregate<{ _id: Types.ObjectId; count: number }>([
+      { $match: { organizationId: orgId, teamId: { $in: teamIds } } },
+      { $group: { _id: '$teamId', count: { $sum: 1 } } },
+    ]),
+    TaskModel.aggregate<{ _id: Types.ObjectId; count: number }>([
+      { $match: { organizationId: orgId, teamId: { $in: teamIds } } },
+      { $group: { _id: '$teamId', count: { $sum: 1 } } },
+    ]),
+    TaskModel.aggregate<{ _id: Types.ObjectId; count: number }>([
+      {
+        $match: {
+          organizationId: orgId,
+          teamId: { $in: teamIds },
           status: { $ne: 'done' },
           dueDate: { $ne: null, $lt: now },
-        }),
-      ]);
-      return {
-        teamId: t._id.toString(),
-        teamName: t.name,
-        projectCount,
-        taskCount,
-        overdueCount,
-      };
-    }),
-  );
+        },
+      },
+      { $group: { _id: '$teamId', count: { $sum: 1 } } },
+    ]),
+  ]);
+
+  const projectMap = new Map(projectsByTeam.map((r) => [r._id.toString(), r.count]));
+  const taskMap = new Map(tasksByTeam.map((r) => [r._id.toString(), r.count]));
+  const overdueMap = new Map(overdueByTeam.map((r) => [r._id.toString(), r.count]));
+
+  const byTeam = teamsList.map((t) => {
+    const tid = t._id.toString();
+    return {
+      teamId: tid,
+      teamName: t.name,
+      projectCount: projectMap.get(tid) ?? 0,
+      taskCount: taskMap.get(tid) ?? 0,
+      overdueCount: overdueMap.get(tid) ?? 0,
+    };
+  });
 
   return {
     scope: 'admin',
@@ -107,35 +128,50 @@ async function leaderDashboard(auth: AuthContext): Promise<LeaderDashboardRespon
   }
   const teamId = new Types.ObjectId(auth.teamId);
   const match = { organizationId: orgId, teamId };
+  // F-005: single `now` across all queries in this request.
+  const now = new Date();
   const [users, projects, taskAgg] = await Promise.all([
     UserModel.countDocuments(match),
     ProjectModel.countDocuments(match),
-    aggregateTasks(match),
+    aggregateTasks(match, now),
   ]);
 
   const projectDocs = await ProjectModel.find(match).sort({ updatedAt: -1 }).limit(20);
-  const now = new Date();
-  const projectsSummary = await Promise.all(
-    projectDocs.map(async (p) => {
-      const pMatch = { organizationId: orgId, projectId: p._id };
-      const [taskCount, overdueCount] = await Promise.all([
-        TaskModel.countDocuments(pMatch),
-        TaskModel.countDocuments({
-          ...pMatch,
+  const projectIds = projectDocs.map((p) => p._id);
+
+  // N+1 fix: batch-aggregate task/overdue counts per project in 2 queries.
+  const [tasksByProject, overdueByProject] = await Promise.all([
+    TaskModel.aggregate<{ _id: Types.ObjectId; count: number }>([
+      { $match: { organizationId: orgId, projectId: { $in: projectIds } } },
+      { $group: { _id: '$projectId', count: { $sum: 1 } } },
+    ]),
+    TaskModel.aggregate<{ _id: Types.ObjectId; count: number }>([
+      {
+        $match: {
+          organizationId: orgId,
+          projectId: { $in: projectIds },
           status: { $ne: 'done' },
           dueDate: { $ne: null, $lt: now },
-        }),
-      ]);
-      return {
-        id: p._id.toString(),
-        title: p.title,
-        teamId: p.teamId.toString(),
-        status: p.status,
-        taskCount,
-        overdueCount,
-      };
-    }),
-  );
+        },
+      },
+      { $group: { _id: '$projectId', count: { $sum: 1 } } },
+    ]),
+  ]);
+
+  const taskMap = new Map(tasksByProject.map((r) => [r._id.toString(), r.count]));
+  const overdueMap = new Map(overdueByProject.map((r) => [r._id.toString(), r.count]));
+
+  const projectsSummary = projectDocs.map((p) => {
+    const pid = p._id.toString();
+    return {
+      id: pid,
+      title: p.title,
+      teamId: p.teamId.toString(),
+      status: p.status,
+      taskCount: taskMap.get(pid) ?? 0,
+      overdueCount: overdueMap.get(pid) ?? 0,
+    };
+  });
 
   return {
     scope: 'leader',
@@ -158,9 +194,10 @@ async function memberDashboard(auth: AuthContext): Promise<MemberDashboardRespon
   const orgId = new Types.ObjectId(auth.organizationId);
   const userId = new Types.ObjectId(auth.userId);
   const match: Record<string, unknown> = { organizationId: orgId, assignedTo: userId };
-  const taskAgg = await aggregateTasks(match);
-
+  // F-005: single `now` shared by aggregate + per-task overdue flag.
   const now = new Date();
+  const taskAgg = await aggregateTasks(match, now);
+
   const upcomingDocs = await TaskModel.find({
     ...match,
     status: { $ne: 'done' },

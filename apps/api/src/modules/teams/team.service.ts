@@ -1,10 +1,13 @@
 // Teams service. Admin CRUD; leaders/members can list teams in their org.
-import { Types } from 'mongoose';
 import type { TeamResponseDto } from '@orgflow/shared-types';
-import { TeamModel, type TeamHydrated } from './team.model.js';
-import { UserModel } from '../users/user.model.js';
-import { errors } from '../../utils/errors.js';
+import { Types } from 'mongoose';
 import type { AuthContext } from '../../middleware/auth-context.js';
+import { logAudit } from '../../utils/audit.js';
+import { errors } from '../../utils/errors.js';
+import { toSkipLimit, type Pagination } from '../../utils/pagination.js';
+import { ProjectModel } from '../projects/project.model.js';
+import { UserModel } from '../users/user.model.js';
+import { TeamModel, type TeamHydrated } from './team.model.js';
 import type { CreateTeamInput, UpdateTeamInput } from './team.schema.js';
 
 function assertObjectId(id: string, label: string): Types.ObjectId {
@@ -14,8 +17,7 @@ function assertObjectId(id: string, label: string): Types.ObjectId {
   return new Types.ObjectId(id);
 }
 
-async function toTeamResponseDto(team: TeamHydrated): Promise<TeamResponseDto> {
-  const memberCount = await UserModel.countDocuments({ teamId: team._id });
+function toTeamResponseDto(team: TeamHydrated, memberCount: number): TeamResponseDto {
   return {
     id: team.id as string,
     organizationId: team.organizationId.toString(),
@@ -38,10 +40,29 @@ async function validateLeader(
   return leaderObjId;
 }
 
-export async function listTeams(auth: AuthContext): Promise<TeamResponseDto[]> {
+// RBAC design decision: All roles (admin, leader, member) may list teams within
+// their organization. Members need team context for UI selectors (e.g. project
+// and task forms). Data is org-scoped so no cross-org leak occurs.
+export async function listTeams(
+  auth: AuthContext,
+  pagination: Pagination,
+): Promise<{ items: TeamResponseDto[]; total: number }> {
   const orgId = new Types.ObjectId(auth.organizationId);
-  const teams = await TeamModel.find({ organizationId: orgId }).sort({ name: 1 });
-  return Promise.all(teams.map(toTeamResponseDto));
+  const filter = { organizationId: orgId };
+  const { skip, limit } = toSkipLimit(pagination);
+  const [teams, total] = await Promise.all([
+    TeamModel.find(filter).sort({ name: 1 }).skip(skip).limit(limit),
+    TeamModel.countDocuments(filter),
+  ]);
+  // BUG-009: Batch member counts in a single aggregation instead of N+1 queries.
+  const teamIds = teams.map((t) => t._id);
+  const countAgg = await UserModel.aggregate<{ _id: Types.ObjectId; count: number }>([
+    { $match: { teamId: { $in: teamIds } } },
+    { $group: { _id: '$teamId', count: { $sum: 1 } } },
+  ]);
+  const countMap = new Map(countAgg.map((c) => [c._id.toString(), c.count]));
+  const items = teams.map((t) => toTeamResponseDto(t, countMap.get(t._id.toString()) ?? 0));
+  return { items, total };
 }
 
 export async function getTeam(auth: AuthContext, id: string): Promise<TeamResponseDto> {
@@ -51,7 +72,8 @@ export async function getTeam(auth: AuthContext, id: string): Promise<TeamRespon
     organizationId: orgId,
   });
   if (!team) throw errors.notFound('Team not found');
-  return toTeamResponseDto(team);
+  const memberCount = await UserModel.countDocuments({ teamId: team._id });
+  return toTeamResponseDto(team, memberCount);
 }
 
 export async function createTeam(
@@ -73,7 +95,13 @@ export async function createTeam(
     description: input.description ?? null,
     leaderId: leaderObjId,
   });
-  return toTeamResponseDto(team);
+  logAudit(auth, {
+    action: 'team.create',
+    resourceId: team.id as string,
+    meta: { teamId: team.id as string, teamName: team.name },
+  });
+  const memberCount = await UserModel.countDocuments({ teamId: team._id });
+  return toTeamResponseDto(team, memberCount);
 }
 
 export async function updateTeam(
@@ -99,15 +127,38 @@ export async function updateTeam(
     }
   }
   await team.save();
-  return toTeamResponseDto(team);
+  logAudit(auth, {
+    action: 'team.update',
+    resourceId: team.id as string,
+    meta: { teamId: team.id as string },
+  });
+  const memberCount = await UserModel.countDocuments({ teamId: team._id });
+  return toTeamResponseDto(team, memberCount);
 }
 
 export async function deleteTeam(auth: AuthContext, id: string): Promise<void> {
   if (auth.role !== 'admin') throw errors.forbidden('Only admins can delete teams');
   const orgId = new Types.ObjectId(auth.organizationId);
   const teamObjId = assertObjectId(id, 'teamId');
-  const team = await TeamModel.findOneAndDelete({ _id: teamObjId, organizationId: orgId });
+
+  const team = await TeamModel.findOne({ _id: teamObjId, organizationId: orgId });
   if (!team) throw errors.notFound('Team not found');
-  // Detach users from deleted team.
-  await UserModel.updateMany({ teamId: teamObjId }, { $set: { teamId: null } });
+
+  // H-003: reject deletion if the team still has members or projects.
+  const [hasMembers, hasProjects] = await Promise.all([
+    UserModel.exists({ teamId: teamObjId }),
+    ProjectModel.exists({ teamId: teamObjId, organizationId: orgId }),
+  ]);
+  if (hasMembers !== null || hasProjects !== null) {
+    throw errors.validation(
+      'Cannot delete a team that still has members or projects. Reassign them first.',
+    );
+  }
+
+  await team.deleteOne();
+  logAudit(auth, {
+    action: 'team.delete',
+    resourceId: team.id as string,
+    meta: { teamId: team.id as string, teamName: team.name },
+  });
 }

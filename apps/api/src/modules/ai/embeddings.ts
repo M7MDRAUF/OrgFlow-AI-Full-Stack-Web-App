@@ -4,14 +4,20 @@
 // still function end-to-end. This fallback is labelled non-production in docs.
 
 import { loadEnv } from '../../app/env.js';
+import { getLogger } from '../../config/logger.js';
 
-export const EMBEDDING_DIMENSIONS = 384;
+// Dimensions are env-driven so deployments can swap embedding models without
+// a code change (I-003). Callers MUST always use getEmbeddingDimensions() when
+// allocating vectors so the fallback and the real model agree.
+export function getEmbeddingDimensions(): number {
+  return loadEnv().OLLAMA_EMBED_DIMENSIONS;
+}
 
-function deterministicEmbedding(text: string): number[] {
-  const vec = new Array<number>(EMBEDDING_DIMENSIONS).fill(0);
+function deterministicEmbedding(text: string, dims: number): number[] {
+  const vec = new Array<number>(dims).fill(0);
   for (let i = 0; i < text.length; i += 1) {
     const code = text.charCodeAt(i);
-    const slot = (code * 2654435761) % EMBEDDING_DIMENSIONS;
+    const slot = (code * 2654435761) % dims;
     vec[slot] = (vec[slot] ?? 0) + 1;
   }
   // L2-normalize
@@ -27,6 +33,7 @@ interface OllamaEmbedResponse {
 
 export async function embedText(text: string): Promise<number[]> {
   const env = loadEnv();
+  const dims = env.OLLAMA_EMBED_DIMENSIONS;
   const url = `${env.OLLAMA_HOST}/api/embeddings`;
   try {
     const response = await fetch(url, {
@@ -40,16 +47,44 @@ export async function embedText(text: string): Promise<number[]> {
     if (!Array.isArray(data.embedding) || data.embedding.length === 0) {
       throw new Error('Ollama returned empty embedding');
     }
+    // F-003: guard against dimension drift — a silent mismatch between
+    // indexed embeddings and query embeddings corrupts retrieval ranking.
+    if (data.embedding.length !== dims) {
+      throw new Error(
+        `Embedding dimension mismatch: expected ${String(dims)}, got ${String(data.embedding.length)}`,
+      );
+    }
     return data.embedding;
-  } catch {
-    return deterministicEmbedding(text);
+  } catch (err: unknown) {
+    // DA-001: Only fall back on network/availability errors. Configuration
+    // errors (dimension mismatch, empty embeddings) MUST propagate so that
+    // callers surface them instead of silently indexing garbage vectors.
+    if (err instanceof Error && err.message.includes('dimension mismatch')) {
+      throw err;
+    }
+    getLogger(env).error(
+      { model: env.OLLAMA_EMBED_MODEL, query: text.substring(0, 100), err },
+      'Ollama embedding generation failed, using deterministic fallback',
+    );
+    return deterministicEmbedding(text, dims);
   }
 }
 
+/**
+ * F-002: parallelised batch embedding. We cap concurrency to avoid saturating
+ * Ollama while still being materially faster than a serial loop for large
+ * documents. Order of results is preserved.
+ */
 export async function embedMany(texts: string[]): Promise<number[][]> {
-  const out: number[][] = [];
-  for (const text of texts) {
-    out.push(await embedText(text));
+  const CONCURRENCY = 8;
+  const out = new Array<number[]>(texts.length);
+  for (let start = 0; start < texts.length; start += CONCURRENCY) {
+    const slice = texts.slice(start, start + CONCURRENCY);
+    const results = await Promise.all(slice.map((t) => embedText(t)));
+    for (let i = 0; i < results.length; i += 1) {
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      out[start + i] = results[i]!;
+    }
   }
   return out;
 }

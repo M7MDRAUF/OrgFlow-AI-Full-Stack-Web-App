@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify:
     name: Typecheck, Lint, Test, Build
@@ -34,8 +38,18 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Test
-        run: npm run test
+      - name: Format check
+        run: npm run format:check
+
+      - name: Test API
+        run: npm test -w apps/api
+
+      - name: Test Web
+        run: npm test -w apps/web
+
+      - name: Security audit (high+)
+        run: npm audit --omit=dev --audit-level=high
+        continue-on-error: false
 
       - name: Build
         run: npm run build

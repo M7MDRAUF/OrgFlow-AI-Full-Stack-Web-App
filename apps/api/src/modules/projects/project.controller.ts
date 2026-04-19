@@ -1,13 +1,14 @@
 import type { Request, Response } from 'express';
-import { sendSuccess } from '../../utils/response.js';
 import { errors } from '../../utils/errors.js';
+import { paginationSchema } from '../../utils/pagination.js';
 import { requireParam } from '../../utils/request.js';
-import * as projectService from './project.service.js';
+import { sendSuccess } from '../../utils/response.js';
 import type {
   CreateProjectInput,
   ListProjectsQuery,
   UpdateProjectInput,
 } from './project.schema.js';
+import * as projectService from './project.service.js';
 
 function requireAuth(req: Request) {
   if (!req.auth) throw errors.unauthenticated();
@@ -15,11 +16,24 @@ function requireAuth(req: Request) {
 }
 
 export async function listProjectsHandler(req: Request, res: Response): Promise<void> {
-  const projects = await projectService.listProjects(
+  const pagination = paginationSchema.parse(req.query);
+  const { items, total } = await projectService.listProjects(
     requireAuth(req),
     req.query as unknown as ListProjectsQuery,
+    pagination,
   );
-  sendSuccess(res, { projects });
+  sendSuccess(
+    res,
+    { projects: items },
+    {
+      meta: {
+        page: pagination.page,
+        pageSize: pagination.pageSize,
+        total,
+        hasMore: pagination.page * pagination.pageSize < total,
+      },
+    },
+  );
 }
 
 export async function getProjectHandler(req: Request, res: Response): Promise<void> {

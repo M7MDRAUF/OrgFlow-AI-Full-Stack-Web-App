@@ -2,11 +2,12 @@
 import bcrypt from 'bcryptjs';
 import { Types } from 'mongoose';
 import request from 'supertest';
-import { describe, expect, it, beforeAll } from 'vitest';
-import './setup-db.js';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app/app.js';
 import { loadEnv } from '../src/app/env.js';
+import { signAuthToken } from '../src/middleware/auth.middleware.js';
 import { UserModel } from '../src/modules/users/user.model.js';
+import './setup-db.js';
 
 const env = loadEnv();
 const app = createApp(env);
@@ -14,7 +15,7 @@ const app = createApp(env);
 const TEST_ORG_ID = new Types.ObjectId();
 
 beforeAll(async () => {
-  const passwordHash = await bcrypt.hash('correct-horse', 10);
+  const passwordHash = await bcrypt.hash('correct-horse-12', 10);
   await UserModel.create({
     organizationId: TEST_ORG_ID,
     teamId: null,
@@ -33,7 +34,7 @@ describe('POST /api/v1/auth/login', () => {
   it('returns a token for valid credentials', async () => {
     const res = await request(app)
       .post('/api/v1/auth/login')
-      .send({ email: 'admin@example.com', password: 'correct-horse' });
+      .send({ email: 'admin@example.com', password: 'correct-horse-12' });
     expect(res.status).toBe(200);
     const body = res.body as {
       success: boolean;
@@ -48,7 +49,7 @@ describe('POST /api/v1/auth/login', () => {
   it('rejects invalid password', async () => {
     const res = await request(app)
       .post('/api/v1/auth/login')
-      .send({ email: 'admin@example.com', password: 'wrong' });
+      .send({ email: 'admin@example.com', password: 'wrong-but-long' });
     expect(res.status).toBe(401);
     const body = res.body as { success: boolean; error: { code: string } };
     expect(body.success).toBe(false);
@@ -58,7 +59,7 @@ describe('POST /api/v1/auth/login', () => {
   it('rejects unknown email', async () => {
     const res = await request(app)
       .post('/api/v1/auth/login')
-      .send({ email: 'nobody@example.com', password: 'x' });
+      .send({ email: 'nobody@example.com', password: 'wrong-but-long' });
     expect(res.status).toBe(401);
   });
 
@@ -67,5 +68,42 @@ describe('POST /api/v1/auth/login', () => {
     expect(res.status).toBe(400);
     const body = res.body as { error: { code: string } };
     expect(body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('rejects short password at the boundary (BE-C-001)', async () => {
+    const res = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: 'admin@example.com', password: 'short' });
+    expect(res.status).toBe(400);
+    const body = res.body as { error: { code: string } };
+    expect(body.error.code).toBe('VALIDATION_ERROR');
+  });
+});
+
+describe('POST /api/v1/auth/logout', () => {
+  let token: string;
+
+  beforeAll(() => {
+    token = signAuthToken({
+      sub: new Types.ObjectId().toString(),
+      organizationId: TEST_ORG_ID.toString(),
+      teamId: null,
+      role: 'admin',
+    });
+  });
+
+  it('returns loggedOut true with valid token', async () => {
+    const res = await request(app)
+      .post('/api/v1/auth/logout')
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    const body = res.body as { success: boolean; data: { loggedOut: boolean } };
+    expect(body.success).toBe(true);
+    expect(body.data.loggedOut).toBe(true);
+  });
+
+  it('rejects unauthenticated request', async () => {
+    const res = await request(app).post('/api/v1/auth/logout');
+    expect(res.status).toBe(401);
   });
 });

@@ -1,10 +1,10 @@
 // Login page — email + password form. Redirects to prior location (or /) on
 // success. Owned by auth-agent (AGENTS.md §4.5).
+import { Button, Card, ErrorState, Field, Input } from '@orgflow/ui';
 import { useState, type FormEvent, type JSX } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { Button, Card, ErrorState, Field, Input } from '@orgflow/ui';
-import { useLogin } from '../useAuth.js';
 import { authStorage } from '../storage.js';
+import { useLogin } from '../useAuth.js';
 
 interface LocationState {
   from?: { pathname?: string };
@@ -27,8 +27,16 @@ export function LoginPage(): JSX.Element {
       { email, password },
       {
         onSuccess: () => {
-          const state = location.state as LocationState | null;
-          const redirectTo = state?.from?.pathname ?? '/';
+          const raw: unknown = location.state;
+          let redirectTo = '/';
+          if (
+            typeof raw === 'object' &&
+            raw !== null &&
+            'from' in raw &&
+            typeof (raw as LocationState).from?.pathname === 'string'
+          ) {
+            redirectTo = (raw as LocationState).from?.pathname ?? '/';
+          }
           navigate(redirectTo, { replace: true });
         },
       },

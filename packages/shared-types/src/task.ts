@@ -17,6 +17,7 @@ export interface TaskResponseDto {
   priority: TaskPriority;
   dueDate: string | null;
   overdue: boolean;
+  commentCount: number;
   createdAt: string;
   updatedAt: string;
 }

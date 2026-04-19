@@ -1,7 +1,7 @@
 // tasks-agent — Kanban board powered by @dnd-kit.
-import { useMemo, useState, type JSX } from 'react';
 import {
   DndContext,
+  KeyboardSensor,
   MouseSensor,
   TouchSensor,
   useDraggable,
@@ -11,8 +11,10 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { Badge, Button, Card, EmptyState, ErrorState, Field, Select, Skeleton } from '@orgflow/ui';
 import type { TaskResponseDto, TaskStatus } from '@orgflow/shared-types';
+import { Badge, Button, Card, EmptyState, ErrorState, Field, Select, Skeleton } from '@orgflow/ui';
+import { useMemo, useState, type JSX } from 'react';
+import { authStorage } from '../auth/storage.js';
 import { useProjects } from '../projects/useProjects.js';
 import { useTasks, useUpdateTask, type ListTasksFilters } from './useTasks.js';
 
@@ -23,8 +25,15 @@ const COLUMNS: { id: TaskStatus; label: string }[] = [
 ];
 
 export function KanbanPage(): JSX.Element {
+  const profile = authStorage.getProfile();
+  const isMember = profile?.role === 'member';
+
   const [projectId, setProjectId] = useState<string>('');
-  const filters: ListTasksFilters = projectId === '' ? {} : { projectId };
+  const [mineOnly, setMineOnly] = useState<boolean>(isMember);
+  const filters: ListTasksFilters = {
+    ...(projectId === '' ? {} : { projectId }),
+    ...(mineOnly ? { mine: true } : {}),
+  };
 
   const projectsQuery = useProjects();
   const tasksQuery = useTasks(filters);
@@ -33,6 +42,7 @@ export function KanbanPage(): JSX.Element {
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } }),
+    useSensor(KeyboardSensor),
   );
 
   const grouped = useMemo(() => {
@@ -92,17 +102,30 @@ export function KanbanPage(): JSX.Element {
           <h1 className="text-2xl font-semibold">Kanban</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">Drag cards to update status.</p>
         </div>
-        <div className="w-64">
-          <Field label="Project" htmlFor="kanban-project">
-            <Select
-              id="kanban-project"
-              value={projectId}
-              options={projectOptions}
+        <div className="flex items-end gap-3">
+          <div className="w-64">
+            <Field label="Project" htmlFor="kanban-project">
+              <Select
+                id="kanban-project"
+                value={projectId}
+                options={projectOptions}
+                onChange={(e) => {
+                  setProjectId(e.target.value);
+                }}
+              />
+            </Field>
+          </div>
+          <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+            <input
+              type="checkbox"
+              checked={mineOnly}
               onChange={(e) => {
-                setProjectId(e.target.value);
+                setMineOnly(e.target.checked);
               }}
+              className="rounded border-slate-300 dark:border-slate-600"
             />
-          </Field>
+            My tasks only
+          </label>
         </div>
       </header>
 
@@ -171,10 +194,10 @@ function DraggableTaskCard({ task }: { task: TaskResponseDto }): JSX.Element {
             <Badge tone={priorityTone(task.priority)}>{task.priority}</Badge>
           </div>
           <div className="flex items-center justify-between text-xs text-slate-500">
-            <span>
+            <span className={task.overdue ? 'font-medium text-rose-600' : ''}>
               {task.dueDate !== null ? new Date(task.dueDate).toLocaleDateString() : 'No due date'}
+              {task.overdue ? ' • overdue' : ''}
             </span>
-            {task.overdue ? <span className="font-medium text-rose-600">Overdue</span> : null}
           </div>
         </div>
       </Card>

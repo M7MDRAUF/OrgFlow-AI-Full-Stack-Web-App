@@ -1,6 +1,7 @@
 // JWT verification middleware. Extracts Bearer token, verifies, attaches req.auth.
 // auth-agent will add the login/logout endpoints; this middleware is platform
 // infrastructure (AGENTS.md §4.3).
+import { USER_ROLES } from '@orgflow/shared-types';
 import type { NextFunction, Request, Response } from 'express';
 import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { z } from 'zod';
@@ -12,7 +13,7 @@ const tokenPayloadSchema = z.object({
   sub: z.string().min(1),
   organizationId: z.string().min(1),
   teamId: z.string().nullable(),
-  role: z.enum(['admin', 'leader', 'member']),
+  role: z.enum(USER_ROLES),
 });
 
 export type AuthTokenPayload = z.infer<typeof tokenPayloadSchema>;
@@ -42,11 +43,11 @@ export function verifyAuthToken(token: string): AuthTokenPayload {
 
 export function authMiddleware(req: Request, _res: Response, next: NextFunction): void {
   const header = req.header('authorization');
-  if (header?.startsWith('Bearer ') !== true) {
+  if (header?.toLowerCase().startsWith('bearer ') !== true) {
     next(errors.unauthenticated());
     return;
   }
-  const token = header.slice('Bearer '.length).trim();
+  const token = header.slice('bearer '.length).trim();
   try {
     const payload = verifyAuthToken(token);
     const context: AuthContext = {

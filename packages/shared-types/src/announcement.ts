@@ -25,3 +25,7 @@ export interface UpdateAnnouncementRequestDto {
   title?: string;
   body?: string;
 }
+
+export interface UnreadCountDto {
+  count: number;
+}

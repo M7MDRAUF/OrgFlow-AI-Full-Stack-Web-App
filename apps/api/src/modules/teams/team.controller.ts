@@ -1,9 +1,10 @@
 import type { Request, Response } from 'express';
-import { sendSuccess } from '../../utils/response.js';
 import { errors } from '../../utils/errors.js';
+import { paginationSchema } from '../../utils/pagination.js';
 import { requireParam } from '../../utils/request.js';
-import * as teamService from './team.service.js';
+import { sendSuccess } from '../../utils/response.js';
 import type { CreateTeamInput, UpdateTeamInput } from './team.schema.js';
+import * as teamService from './team.service.js';
 
 function requireAuth(req: Request) {
   if (!req.auth) throw errors.unauthenticated();
@@ -11,8 +12,20 @@ function requireAuth(req: Request) {
 }
 
 export async function listTeamsHandler(req: Request, res: Response): Promise<void> {
-  const teams = await teamService.listTeams(requireAuth(req));
-  sendSuccess(res, { teams });
+  const pagination = paginationSchema.parse(req.query);
+  const { items, total } = await teamService.listTeams(requireAuth(req), pagination);
+  sendSuccess(
+    res,
+    { teams: items },
+    {
+      meta: {
+        page: pagination.page,
+        pageSize: pagination.pageSize,
+        total,
+        hasMore: pagination.page * pagination.pageSize < total,
+      },
+    },
+  );
 }
 
 export async function getTeamHandler(req: Request, res: Response): Promise<void> {

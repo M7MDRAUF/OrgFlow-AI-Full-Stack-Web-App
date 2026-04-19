@@ -1,12 +1,15 @@
 // Projects service. Scope by org + team. Admin unrestricted within org;
 // leaders limited to their team; members see projects they belong to.
-import { Types, type FilterQuery } from 'mongoose';
 import type { ProjectResponseDto } from '@orgflow/shared-types';
-import { ProjectModel, type ProjectDoc, type ProjectHydrated } from './project.model.js';
+import { Types, type FilterQuery } from 'mongoose';
+import type { AuthContext } from '../../middleware/auth-context.js';
+import { logAudit } from '../../utils/audit.js';
+import { errors } from '../../utils/errors.js';
+import { toSkipLimit, type Pagination } from '../../utils/pagination.js';
+import { TaskCommentModel, TaskModel } from '../tasks/task.model.js';
 import { TeamModel } from '../teams/team.model.js';
 import { UserModel } from '../users/user.model.js';
-import { errors } from '../../utils/errors.js';
-import type { AuthContext } from '../../middleware/auth-context.js';
+import { ProjectModel, type ProjectDoc, type ProjectHydrated } from './project.model.js';
 import type {
   CreateProjectInput,
   ListProjectsQuery,
@@ -43,14 +46,22 @@ async function assertTeamInOrg(
   if (!team) throw errors.notFound('Team not found');
 }
 
-async function assertMembersInOrg(
+async function assertMembersInTeam(
   organizationId: Types.ObjectId,
+  teamId: Types.ObjectId,
   memberIds: Types.ObjectId[],
 ): Promise<void> {
   if (memberIds.length === 0) return;
-  const count = await UserModel.countDocuments({ _id: { $in: memberIds }, organizationId });
+  // Project members must live in the same team the project belongs to
+  // (BE-H-002). Without this check, a leader could "add" a user from a
+  // different team to a project — violating team scope safety (§2.8 FR-005).
+  const count = await UserModel.countDocuments({
+    _id: { $in: memberIds },
+    organizationId,
+    teamId,
+  });
   if (count !== memberIds.length) {
-    throw errors.validation('One or more member ids do not belong to this organization');
+    throw errors.validation('One or more member ids do not belong to this organization and team');
   }
 }
 
@@ -65,26 +76,35 @@ function canManageTeam(auth: AuthContext, teamId: Types.ObjectId): boolean {
 export async function listProjects(
   auth: AuthContext,
   query: ListProjectsQuery,
-): Promise<ProjectResponseDto[]> {
+  pagination: Pagination,
+): Promise<{ items: ProjectResponseDto[]; total: number }> {
   const orgId = new Types.ObjectId(auth.organizationId);
   const filter: FilterQuery<ProjectDoc> = { organizationId: orgId };
 
   if (auth.role === 'admin') {
     if (query.teamId !== undefined) filter.teamId = assertObjectId(query.teamId, 'teamId');
   } else if (auth.role === 'leader') {
-    if (auth.teamId === null) return [];
+    if (auth.teamId === null) return { items: [], total: 0 };
     filter.teamId = new Types.ObjectId(auth.teamId);
   } else {
     // member: their team projects where they are a member, or team matches
-    if (auth.teamId === null) return [];
+    if (auth.teamId === null) return { items: [], total: 0 };
     filter.teamId = new Types.ObjectId(auth.teamId);
     filter.memberIds = new Types.ObjectId(auth.userId);
   }
 
   if (query.status !== undefined) filter.status = query.status;
+  if (query.search !== undefined && query.search.trim() !== '') {
+    const escaped = query.search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    filter.title = { $regex: escaped, $options: 'i' };
+  }
 
-  const docs = await ProjectModel.find(filter).sort({ updatedAt: -1 });
-  return docs.map(toDto);
+  const { skip, limit } = toSkipLimit(pagination);
+  const [docs, total] = await Promise.all([
+    ProjectModel.find(filter).sort({ updatedAt: -1 }).skip(skip).limit(limit),
+    ProjectModel.countDocuments(filter),
+  ]);
+  return { items: docs.map(toDto), total };
 }
 
 export async function getProject(auth: AuthContext, id: string): Promise<ProjectResponseDto> {
@@ -120,7 +140,7 @@ export async function createProject(
   await assertTeamInOrg(orgId, teamId);
 
   const memberIds = (input.memberIds ?? []).map((m) => assertObjectId(m, 'memberId'));
-  await assertMembersInOrg(orgId, memberIds);
+  await assertMembersInTeam(orgId, teamId, memberIds);
 
   const doc = await ProjectModel.create({
     organizationId: orgId,
@@ -132,6 +152,11 @@ export async function createProject(
     status: input.status ?? 'planned',
     startDate: input.startDate !== undefined ? new Date(input.startDate) : null,
     dueDate: input.dueDate !== undefined ? new Date(input.dueDate) : null,
+  });
+  logAudit(auth, {
+    action: 'project.create',
+    resourceId: doc.id as string,
+    meta: { projectId: doc.id as string, title: doc.title },
   });
   return toDto(doc);
 }
@@ -162,10 +187,15 @@ export async function updateProject(
   }
   if (input.memberIds !== undefined) {
     const memberIds = input.memberIds.map((m) => assertObjectId(m, 'memberId'));
-    await assertMembersInOrg(orgId, memberIds);
+    await assertMembersInTeam(orgId, doc.teamId, memberIds);
     doc.memberIds = memberIds;
   }
   await doc.save();
+  logAudit(auth, {
+    action: 'project.update',
+    resourceId: doc.id as string,
+    meta: { projectId: doc.id as string },
+  });
   return toDto(doc);
 }
 
@@ -179,5 +209,17 @@ export async function deleteProject(auth: AuthContext, id: string): Promise<void
   if (auth.role !== 'admin' && !canManageTeam(auth, doc.teamId)) {
     throw errors.forbidden('Only admins or the team leader can delete this project');
   }
+  // BUG-001: Cascade-delete tasks and comments belonging to this project
+  const projectOid = doc._id;
+  const taskIds = await TaskModel.find({ projectId: projectOid }).distinct('_id');
+  if (taskIds.length > 0) {
+    await TaskCommentModel.deleteMany({ taskId: { $in: taskIds } });
+  }
+  await TaskModel.deleteMany({ projectId: projectOid });
   await doc.deleteOne();
+  logAudit(auth, {
+    action: 'project.delete',
+    resourceId: doc.id as string,
+    meta: { projectId: doc.id as string, title: doc.title },
+  });
 }

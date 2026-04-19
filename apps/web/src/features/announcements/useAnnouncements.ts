@@ -1,13 +1,14 @@
 // notes-agent — react-query hooks for announcements with targeting + read-state.
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   AnnouncementResponseDto,
   CreateAnnouncementRequestDto,
+  UnreadCountDto,
   UpdateAnnouncementRequestDto,
 } from '@orgflow/shared-types';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 import { apiClient } from '../../lib/api-client.js';
-
-const ANNOUNCEMENTS_QUERY_KEY = ['announcements'] as const;
+import { QUERY_KEYS } from '../../lib/query-keys.js';
 
 export interface ListAnnouncementsFilters {
   unreadOnly?: boolean;
@@ -17,14 +18,14 @@ export function useAnnouncements(
   filters?: ListAnnouncementsFilters,
 ): ReturnType<typeof useQuery<AnnouncementResponseDto[]>> {
   return useQuery<AnnouncementResponseDto[]>({
-    queryKey: [...ANNOUNCEMENTS_QUERY_KEY, filters ?? {}],
-    queryFn: async () => {
+    queryKey: [...QUERY_KEYS.announcements, filters ?? {}],
+    queryFn: async ({ signal }) => {
       const params: Record<string, string> = {};
       if (filters?.unreadOnly === true) params['unreadOnly'] = 'true';
       const res = await apiClient.get<{
         success: true;
         data: { announcements: AnnouncementResponseDto[] };
-      }>('/announcements', { params });
+      }>('/announcements', { params, signal });
       return res.data.data.announcements;
     },
   });
@@ -43,7 +44,11 @@ export function useCreateAnnouncement(): ReturnType<
       return res.data.data.announcement;
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ANNOUNCEMENTS_QUERY_KEY });
+      void qc.invalidateQueries({ queryKey: QUERY_KEYS.announcements });
+      toast.success('Announcement created');
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Something went wrong');
     },
   });
 }
@@ -66,7 +71,11 @@ export function useUpdateAnnouncement(): ReturnType<
       return res.data.data.announcement;
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ANNOUNCEMENTS_QUERY_KEY });
+      void qc.invalidateQueries({ queryKey: QUERY_KEYS.announcements });
+      toast.success('Announcement updated');
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Something went wrong');
     },
   });
 }
@@ -83,7 +92,12 @@ export function useDeleteAnnouncement(): ReturnType<
       return res.data.data;
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ANNOUNCEMENTS_QUERY_KEY });
+      void qc.invalidateQueries({ queryKey: QUERY_KEYS.announcements });
+      void qc.invalidateQueries({ queryKey: QUERY_KEYS.unreadCount });
+      toast.success('Announcement deleted');
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Something went wrong');
     },
   });
 }
@@ -101,7 +115,21 @@ export function useMarkAnnouncementRead(): ReturnType<
       return res.data.data.announcement;
     },
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ANNOUNCEMENTS_QUERY_KEY });
+      void qc.invalidateQueries({ queryKey: QUERY_KEYS.announcements });
     },
+  });
+}
+
+export function useUnreadAnnouncementCount(): ReturnType<typeof useQuery<number>> {
+  return useQuery<number>({
+    queryKey: [...QUERY_KEYS.unreadCount],
+    queryFn: async ({ signal }) => {
+      const res = await apiClient.get<{
+        success: true;
+        data: UnreadCountDto;
+      }>('/announcements/unread-count', { signal });
+      return res.data.data.count;
+    },
+    refetchInterval: 60_000,
   });
 }

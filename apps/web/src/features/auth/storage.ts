@@ -1,6 +1,6 @@
 // Auth storage — persists JWT + minimal auth profile in localStorage.
 // auth-agent owns this path per AGENTS.md §4.5.
-import type { UserRole } from '@orgflow/shared-types';
+import { USER_ROLES, type UserRole } from '@orgflow/shared-types';
 
 const TOKEN_KEY = 'orgflow:token';
 const PROFILE_KEY = 'orgflow:auth-profile';
@@ -14,11 +14,27 @@ export interface AuthProfile {
   email: string;
 }
 
+function isAuthProfile(value: unknown): value is AuthProfile {
+  if (typeof value !== 'object' || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  return (
+    typeof obj['userId'] === 'string' &&
+    typeof obj['organizationId'] === 'string' &&
+    (obj['teamId'] === null || typeof obj['teamId'] === 'string') &&
+    typeof obj['role'] === 'string' &&
+    (USER_ROLES as readonly string[]).includes(obj['role']) &&
+    typeof obj['displayName'] === 'string' &&
+    typeof obj['email'] === 'string'
+  );
+}
+
 function readProfile(): AuthProfile | null {
   try {
     const raw = window.localStorage.getItem(PROFILE_KEY);
     if (raw === null) return null;
-    return JSON.parse(raw) as AuthProfile;
+    const parsed: unknown = JSON.parse(raw);
+    if (!isAuthProfile(parsed)) return null;
+    return parsed;
   } catch {
     return null;
   }

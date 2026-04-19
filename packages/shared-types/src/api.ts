@@ -30,6 +30,7 @@ export interface ApiErrorDetail {
 
 export const API_ERROR_CODES = [
   'VALIDATION_ERROR',
+  'INVALID_JSON',
   'UNAUTHENTICATED',
   'FORBIDDEN',
   'RESOURCE_NOT_FOUND',
