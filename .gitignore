@@ -14,8 +14,11 @@ build/
 .env.local
 .env.*.local
 !.env.example
-
+SQ.md
 # logs
+image.png
+image-1.png
+generate_sq_docx.cjs
 *.log
 npm-debug.log*
 yarn-debug.log*
