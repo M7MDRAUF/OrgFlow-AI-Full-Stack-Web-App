@@ -1,9 +1,9 @@
 // auth-agent — api-client response interceptor must replace axios's generic
 // "Request failed with status code 400" message with the backend's own
 // error.message so the UI can display something the user can act on.
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { AxiosError } from 'axios';
 import type * as AxiosNs from 'axios';
+import type { AxiosError } from 'axios';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // Pull the interceptor's reject handler by spying on interceptors.response.use
 // before importing the module under test. We re-import inside each test to

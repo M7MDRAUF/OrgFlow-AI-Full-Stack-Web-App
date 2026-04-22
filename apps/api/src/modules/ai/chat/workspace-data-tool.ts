@@ -8,6 +8,7 @@
 // (listProjects / listTeams / listTasks / listUsers), so the same admin /
 // leader / member RBAC that governs the REST API governs the assistant.
 import type {
+  AiSourceCitation,
   ProjectResponseDto,
   TaskResponseDto,
   TeamResponseDto,
@@ -15,7 +16,6 @@ import type {
 } from '@orgflow/shared-types';
 import { Types } from 'mongoose';
 import type { AuthContext } from '../../../middleware/auth-context.js';
-import type { AiSourceCitation } from '@orgflow/shared-types';
 import { listProjects } from '../../projects/project.service.js';
 import { TaskModel } from '../../tasks/task.model.js';
 import { listTasks } from '../../tasks/task.service.js';
