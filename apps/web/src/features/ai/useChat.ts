@@ -78,3 +78,30 @@ export function useAskAssistant(): ReturnType<
     },
   });
 }
+
+// rag-chat-agent — per-user chat clear. Calls DELETE /ai/chat/history; the
+// backend scopes the deletion to {organizationId, userId}, so this only ever
+// removes the calling user's own messages.
+export function useClearChat(): ReturnType<typeof useMutation<{ deleted: number }, Error>> {
+  const qc = useQueryClient();
+  return useMutation<{ deleted: number }>({
+    mutationFn: async () => {
+      const res = await apiClient.delete<{ success: true; data: { deleted: number } }>(
+        '/ai/chat/history',
+      );
+      return res.data.data;
+    },
+    onSuccess: (data) => {
+      qc.setQueryData<ChatHistoryMessageDto[]>(QUERY_KEYS.chatHistory, []);
+      void qc.invalidateQueries({ queryKey: QUERY_KEYS.chatHistory });
+      toast.success(
+        data.deleted > 0
+          ? `Cleared ${String(data.deleted)} message${data.deleted === 1 ? '' : 's'}`
+          : 'Chat already empty',
+      );
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || 'Failed to clear chat');
+    },
+  });
+}

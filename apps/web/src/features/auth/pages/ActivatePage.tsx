@@ -4,6 +4,18 @@ import { useState, type FormEvent, type JSX } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useCompleteInvite } from '../useAuth.js';
 
+// Mirrors apps/api → packages/shared-types → newPasswordSchema:
+// min 8 chars, must include at least one letter and one number.
+// Keep this regex in sync with that schema.
+const PASSWORD_RULE_HINT = 'At least 8 characters, including a letter and a number.';
+function validatePasswordRule(value: string): string | null {
+  if (value.length < 8) return 'Password must be at least 8 characters.';
+  if (!/[A-Za-z]/.test(value) || !/\d/.test(value)) {
+    return 'Password must include at least one letter and one number.';
+  }
+  return null;
+}
+
 export function ActivatePage(): JSX.Element {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -12,6 +24,7 @@ export function ActivatePage(): JSX.Element {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [mismatch, setMismatch] = useState(false);
+  const [ruleError, setRuleError] = useState<string | null>(null);
 
   if (token.length === 0) {
     return <Navigate to="/login" replace />;
@@ -19,6 +32,13 @@ export function ActivatePage(): JSX.Element {
 
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
+    const rule = validatePasswordRule(password);
+    if (rule !== null) {
+      setRuleError(rule);
+      setMismatch(false);
+      return;
+    }
+    setRuleError(null);
     if (password !== confirm) {
       setMismatch(true);
       return;
@@ -42,17 +62,19 @@ export function ActivatePage(): JSX.Element {
         </h1>
         <Card>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <Field label="New password" htmlFor="activate-password" hint="At least 8 characters.">
+            <Field label="New password" htmlFor="activate-password" hint={PASSWORD_RULE_HINT}>
               <Input
                 id="activate-password"
                 type="password"
                 autoComplete="new-password"
                 minLength={8}
                 required
+                invalid={ruleError !== null}
                 value={password}
                 onChange={(e) => {
                   setPassword(e.target.value);
                   if (mismatch) setMismatch(false);
+                  if (ruleError !== null) setRuleError(null);
                 }}
               />
             </Field>
@@ -71,6 +93,7 @@ export function ActivatePage(): JSX.Element {
                 }}
               />
             </Field>
+            {ruleError !== null ? <ErrorState title={ruleError} /> : null}
             {mismatch ? <ErrorState title="Passwords do not match" /> : null}
             {complete.isError ? (
               <ErrorState title="Activation failed" description={complete.error.message} />

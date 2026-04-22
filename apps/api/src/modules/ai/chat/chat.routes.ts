@@ -5,7 +5,12 @@ import { loadEnv } from '../../../app/env.js';
 import { authMiddleware } from '../../../middleware/auth.middleware.js';
 import { validate } from '../../../middleware/validate.middleware.js';
 import { asyncHandler } from '../../../utils/async-handler.js';
-import { askHandler, healthHandler, historyHandler } from './chat.controller.js';
+import {
+  askHandler,
+  clearHistoryHandler,
+  healthHandler,
+  historyHandler,
+} from './chat.controller.js';
 import { chatHistoryQuerySchema, chatRequestSchema } from './chat.schema.js';
 
 export function createChatRouter(): Router {
@@ -67,5 +72,18 @@ export function createChatRouter(): Router {
    *         description: Array of chat messages
    */
   router.get('/history', validate({ query: chatHistoryQuerySchema }), asyncHandler(historyHandler));
+  /**
+   * @openapi
+   * /ai/chat/history:
+   *   delete:
+   *     tags: [AI Chat]
+   *     summary: Clear chat history for the current user
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Number of deleted messages
+   */
+  router.delete('/history', asyncHandler(clearHistoryHandler));
   return router;
 }

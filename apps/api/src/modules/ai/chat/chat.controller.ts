@@ -25,3 +25,8 @@ export async function healthHandler(_req: Request, res: Response): Promise<void>
   const result = await chatService.checkOllamaHealth();
   sendSuccess(res, result);
 }
+
+export async function clearHistoryHandler(req: Request, res: Response): Promise<void> {
+  const result = await chatService.clearHistory(requireAuth(req));
+  sendSuccess(res, result);
+}

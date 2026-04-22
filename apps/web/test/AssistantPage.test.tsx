@@ -16,6 +16,12 @@ vi.mock('../src/features/ai/useChat.js', () => ({
   useOllamaStatus: vi.fn(() => ({
     status: 'connected' as const,
   })),
+  useClearChat: vi.fn(() => ({
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+  })),
 }));
 
 const { useChatHistory } = await import('../src/features/ai/useChat.js');
@@ -116,5 +122,47 @@ describe('<AssistantPage />', () => {
     render(<AssistantPage />, { wrapper });
     expect(screen.getByLabelText('Your question')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /ask/i })).toBeInTheDocument();
+  });
+
+  it('renders assistant markdown tables as real <table> elements', () => {
+    const tableMd = [
+      'Here is the data:',
+      '',
+      '| Title | Team | Status | Members | Due |',
+      '| --- | --- | --- | --- | --- |',
+      '| Onboarding | Platform | active | 2 | — |',
+      '| Web App | Platform | active | 2 | 2026-06-25 |',
+    ].join('\n');
+    const messages: ChatHistoryMessageDto[] = [
+      {
+        id: 'm1',
+        role: 'user',
+        content: 'give me the details for each project',
+        sources: [],
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: 'm2',
+        role: 'assistant',
+        content: tableMd,
+        sources: [],
+        createdAt: new Date().toISOString(),
+      },
+    ];
+    mockedUseChatHistory.mockReturnValue({
+      data: messages,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useChatHistory>);
+
+    const { container } = render(<AssistantPage />, { wrapper });
+    const table = container.querySelector('[data-testid="assistant-markdown"] table');
+    expect(table).not.toBeNull();
+    expect(container.querySelectorAll('thead th')).toHaveLength(5);
+    expect(container.querySelectorAll('tbody tr')).toHaveLength(2);
+    expect(screen.getByText('Onboarding')).toBeInTheDocument();
+    expect(screen.getByText('2026-06-25')).toBeInTheDocument();
   });
 });

@@ -33,7 +33,8 @@ interface AuditEvent {
     | 'document.delete'
     | 'document.reindex'
     | 'organization.update'
-    | 'chat.ask';
+    | 'chat.ask'
+    | 'chat.clear';
   resourceId: string | null;
   // Small metadata bag (before/after values, ids). Caller is responsible for
   // not putting sensitive data in here; the logger's redact paths still apply.
