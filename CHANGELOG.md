@@ -111,6 +111,69 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Security & Hardening (branch: `fixing` — top-12 critical findings)
+
+- **SEC-01** — Pin JWT verification to `algorithms: ['HS256']` and signing to
+  `algorithm: 'HS256'` to defend against alg-confusion attacks (`alg: none`,
+  HS512-with-HS256-secret). Removed the unsafe `as unknown as ExpiresIn`
+  cast on `JWT_EXPIRES_IN`. Regression test in
+  `apps/api/test/jwt-algorithm-pinning.test.ts`.
+- **AI-01** — Deterministic embedding fallback no longer pollutes retrieval.
+  `embedTextWithStatus` now reports a `degraded` flag, `DocumentChunk`
+  persists `embeddingDegraded`, ingestion annotates the parent document's
+  `error`, and `retrieval.ts` excludes `embeddingDegraded:true` chunks from
+  every grounded answer (vector + cosine paths). Structured `warn` log on
+  every fallback.
+- **DB-01 / DB-04** — Project and document deletes now cascade through a
+  Mongoose `withTransaction()`. Project deletion additionally removes the
+  AI documents and chunks scoped to it (orphan-RAG fix). Standalone Mongo
+  is detected and degrades to a logged sequential cascade so dev workflows
+  are not blocked. New helper `apps/api/src/utils/transactions.ts`.
+- **OPS-01** — `express-rate-limit` is now backed by `rate-limit-redis` when
+  `REDIS_URL` is configured. Single shared `ioredis` client across all four
+  limiters (global, login, invite, chat, upload). Falls back to the
+  in-process memory store when REDIS_URL is empty (dev default). Helper:
+  `apps/api/src/config/rate-limit-store.ts`.
+- **DB-02** — `chatLog` collection now has a TTL index driven by the new
+  `CHAT_LOG_TTL_DAYS` env (default 90, set 0 to disable). Bounds chat-log
+  growth without dropping recent context.
+- **OPS-02** — `/ready` now actually pings MongoDB (`db.admin().ping()`,
+  3 s budget) and Ollama (`/api/tags`, 3 s budget). Returns `503` with a
+  structured `checks` payload when either dependency is down so k8s
+  readiness probes route traffic correctly. `/health` remains cheap
+  liveness.
+- **OPS-03** — Multer hardened: `limits.files = 1` (closed multi-file OOM
+  vector), `limits.fields = 16`, `limits.fieldSize = 64 KiB`,
+  `limits.headerPairs = 100` in addition to the existing
+  `MAX_UPLOAD_SIZE_MB`-driven `fileSize` cap.
+- **AI-02** — MIME magic-byte sniffer no longer rejects valid UTF-8 with
+  non-ASCII bytes. Added BOM detection (UTF-8, UTF-16 LE/BE), strict
+  TextDecoder validity check on a 4 KiB sample (with split-codepoint
+  trimming), UTF-16-without-BOM heuristic, and a tolerant
+  replacement-character ratio fallback (<1%).
+- **AI-03** — Chunker switched from word-count to true BPE token counting
+  via `gpt-tokenizer` (cl100k_base). Eliminates language-dependent chunk
+  bloat for CJK/code/dense URLs. Existing tests updated to assert the
+  encoded token count instead of word count.
+- **AI-04** — Vector retrieval over-fetch is now adaptive: starts at 4×
+  `topK`, retries at 8× when post-filter recall is below `topK`. Emits
+  `warn` when the wider net is required so operators can spot recall
+  pressure on member-scoped users.
+- **DEPS-01 / SEC-04** — `npm audit fix` cleared all 4 production-dep
+  vulnerabilities (axios CRLF/SSRF/prototype-pollution chain,
+  `ip-address`-via-`express-rate-limit`). Prod audit now reports
+  `0 vulnerabilities` at the `--audit-level=high` gate.
+
+### Configuration
+
+- New env vars: `CHAT_LOG_TTL_DAYS` (number, default 90),
+  `REDIS_URL` (string, default empty → in-memory rate limiter).
+
+### Tests
+
+- `apps/api/test/jwt-algorithm-pinning.test.ts` — 3 cases (round-trip,
+  `alg: none`, HS512 with correct secret).
+
 ### Added
 
 #### Infrastructure & DX

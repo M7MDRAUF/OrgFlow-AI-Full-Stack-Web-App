@@ -12,6 +12,13 @@ export interface DocumentChunkDoc {
   chunkIndex: number;
   content: string;
   embedding: number[];
+  /**
+   * AI-01: true when the embedding was produced by the deterministic
+   * fallback (Ollama unreachable / failed) rather than the real embed
+   * model. Such vectors carry no semantic signal and MUST be excluded
+   * from grounded retrieval. Re-index after restoring Ollama to clear.
+   */
+  embeddingDegraded: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -45,6 +52,9 @@ const chunkSchema = new Schema<DocumentChunkDoc>(
     chunkIndex: { type: Number, required: true },
     content: { type: String, required: true },
     embedding: { type: [Number], default: [] },
+    // AI-01: defaults to false so legacy chunks (pre-migration) are
+    // treated as real embeddings; fresh ingests explicitly set this.
+    embeddingDegraded: { type: Boolean, default: false, index: true },
   },
   { timestamps: true },
 );

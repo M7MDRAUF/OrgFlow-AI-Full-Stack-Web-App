@@ -67,6 +67,11 @@ async function buildScopeFilter(
 
   const filter: Record<string, unknown> = {
     organizationId: orgId,
+    // AI-01: exclude chunks whose embedding came from the deterministic
+    // fallback (Ollama down at ingest time). Such vectors carry no
+    // semantic signal; serving them as "grounded" answers is the
+    // wrong-answer scenario the AI safety guardrails block.
+    embeddingDegraded: { $ne: true },
     $or: clauses,
   };
 
@@ -100,28 +105,46 @@ export async function retrieveChunks(
   }[];
 
   if (useVectorSearch) {
-    // F-001: Atlas $vectorSearch pipeline with RBAC-safe post-filter.
-    // Role filtering via $match (not pre-filter) because $size is unsupported
-    // in $vectorSearch filter. Over-fetch by 2x to compensate for post-filtering.
-    // $vectorSearch is an Atlas-specific stage not in PipelineStage union.
-    const pipeline = [
-      {
-        $vectorSearch: {
-          index: 'chunk_vector_index',
-          path: 'embedding',
-          queryVector: queryEmbedding,
-          numCandidates: topK * 20,
-          limit: topK * 2,
-          filter,
+    // F-001 / AI-04: Atlas $vectorSearch with RBAC-safe post-filter. Role
+    // filtering goes through `$match` (not pre-filter) because `$size` is
+    // unsupported in `$vectorSearch.filter`. Recall is therefore sensitive
+    // to the ratio between `limit` and the number of post-match results,
+    // so we adaptively grow the over-fetch from 4× to 8× when the first
+    // pass returns fewer hits than `topK`.
+    const runVectorSearch = async (
+      multiplier: number,
+    ): Promise<(DocumentChunkDoc & { score: number })[]> => {
+      const pipeline = [
+        {
+          $vectorSearch: {
+            index: 'chunk_vector_index',
+            path: 'embedding',
+            queryVector: queryEmbedding,
+            numCandidates: Math.max(topK * 20, topK * multiplier * 4),
+            limit: topK * multiplier,
+            filter,
+          },
         },
-      },
-      { $match: roleClause } satisfies PipelineStage,
-      { $limit: topK } satisfies PipelineStage,
-      { $addFields: { score: { $meta: 'vectorSearchScore' } } } satisfies PipelineStage,
-    ] as PipelineStage[];
+        { $match: roleClause } satisfies PipelineStage,
+        { $limit: topK } satisfies PipelineStage,
+        { $addFields: { score: { $meta: 'vectorSearchScore' } } } satisfies PipelineStage,
+      ] as PipelineStage[];
+      return DocumentChunkModel.aggregate(pipeline);
+    };
+
     try {
-      const results: (DocumentChunkDoc & { score: number })[] =
-        await DocumentChunkModel.aggregate(pipeline);
+      let results = await runVectorSearch(4);
+      if (results.length < topK) {
+        // Likely victim of the post-filter cliff (member-scoped users with
+        // narrow project membership). Re-run with a wider net before giving
+        // up; warn so operators see the recall pressure.
+        const logger = getLogger(env);
+        logger.warn(
+          { topK, firstPassHits: results.length, multiplier: 8 },
+          'AI-04: vector retrieval under-recalled at 4×, retrying with 8× over-fetch',
+        );
+        results = await runVectorSearch(8);
+      }
       top = results.map((r) => ({ chunk: r, score: r.score }));
     } catch (err: unknown) {
       // Atlas outage or misconfigured index — fall back to dev cosine path

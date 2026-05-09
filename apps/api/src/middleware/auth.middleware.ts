@@ -18,11 +18,23 @@ const tokenPayloadSchema = z.object({
 
 export type AuthTokenPayload = z.infer<typeof tokenPayloadSchema>;
 
+// SEC-01: HS256 is the only algorithm we ever sign with. Pinning the verifier
+// to the same set defends against alg-confusion attacks (e.g. `alg: none`,
+// or RSA-public-as-HMAC-secret historical jsonwebtoken bugs). Any token whose
+// header advertises a different algorithm is rejected before any signature
+// check runs, keeping the trust boundary minimal and explicit.
+const JWT_ALGORITHMS: readonly jwt.Algorithm[] = ['HS256'] as const;
+
 export function signAuthToken(payload: AuthTokenPayload): string {
   const env = loadEnv();
+  // BE-03 / TYPE-01: use the proper jwt typing for `expiresIn` instead of an
+  // unsafe `as unknown as` cast. The Zod-validated env value is a duration
+  // string like "7d" / "30m" which jsonwebtoken's `StringValue` accepts.
   type ExpiresIn = NonNullable<jwt.SignOptions['expiresIn']>;
+  const expiresIn = env.JWT_EXPIRES_IN as ExpiresIn;
   return jwt.sign(payload, env.JWT_SECRET, {
-    expiresIn: env.JWT_EXPIRES_IN as unknown as ExpiresIn,
+    algorithm: 'HS256',
+    expiresIn,
   });
 }
 
@@ -30,7 +42,7 @@ export function verifyAuthToken(token: string): AuthTokenPayload {
   const env = loadEnv();
   let decoded: string | JwtPayload;
   try {
-    decoded = jwt.verify(token, env.JWT_SECRET);
+    decoded = jwt.verify(token, env.JWT_SECRET, { algorithms: [...JWT_ALGORITHMS] });
   } catch {
     throw errors.unauthenticated('Invalid or expired token');
   }

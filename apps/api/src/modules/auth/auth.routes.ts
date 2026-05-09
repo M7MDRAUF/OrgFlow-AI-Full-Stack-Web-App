@@ -3,6 +3,7 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { loadEnv } from '../../app/env.js';
+import { rateLimitStoreOptions } from '../../config/rate-limit-store.js';
 import { authMiddleware } from '../../middleware/auth.middleware.js';
 import { requireRole } from '../../middleware/role.middleware.js';
 import { validate } from '../../middleware/validate.middleware.js';
@@ -27,12 +28,14 @@ export function createAuthRouter(): Router {
     limit: isTest ? 1_000 : 10,
     standardHeaders: 'draft-7',
     legacyHeaders: false,
+    ...rateLimitStoreOptions('auth-login'),
   });
   const inviteLimiter = rateLimit({
     windowMs: 60_000,
     limit: isTest ? 1_000 : 20,
     standardHeaders: 'draft-7',
     legacyHeaders: false,
+    ...rateLimitStoreOptions('auth-invite'),
   });
 
   /**

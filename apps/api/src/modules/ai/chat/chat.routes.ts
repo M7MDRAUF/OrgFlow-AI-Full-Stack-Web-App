@@ -2,6 +2,7 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { loadEnv } from '../../../app/env.js';
+import { rateLimitStoreOptions } from '../../../config/rate-limit-store.js';
 import { authMiddleware } from '../../../middleware/auth.middleware.js';
 import { validate } from '../../../middleware/validate.middleware.js';
 import { asyncHandler } from '../../../utils/async-handler.js';
@@ -37,6 +38,7 @@ export function createChatRouter(): Router {
     limit: isTest ? 1_000 : 30,
     standardHeaders: 'draft-7',
     legacyHeaders: false,
+    ...rateLimitStoreOptions('chat'),
   });
   /**
    * @openapi

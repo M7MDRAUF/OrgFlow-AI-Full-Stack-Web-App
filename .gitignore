@@ -99,3 +99,6 @@ packages/ui/tsup.config.js
 
 # scratch / temp
 test-doc.txt
+
+# playwright-mcp browser test snapshots/console logs (local QA only)
+.playwright-mcp/

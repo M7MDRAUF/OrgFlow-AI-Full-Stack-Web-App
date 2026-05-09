@@ -8,6 +8,7 @@ import type { AuthContext } from '../../../middleware/auth-context.js';
 import { logAudit } from '../../../utils/audit.js';
 import { errors } from '../../../utils/errors.js';
 import { toSkipLimit, type Pagination } from '../../../utils/pagination.js';
+import { runInTransaction, sessionOpts } from '../../../utils/transactions.js';
 import { ProjectModel } from '../../projects/project.model.js';
 import { TeamModel } from '../../teams/team.model.js';
 import { embedMany } from '../embeddings.js';
@@ -145,6 +146,9 @@ export async function uploadDocument(
     // insertMany failures (network blip, dup key) would otherwise leave the
     // document in a half-indexed state that retrieval would still serve.
     await DocumentChunkModel.deleteMany({ documentId: doc._id });
+    // AI-01: persist per-chunk degraded flag so retrieval can exclude
+    // semantically-meaningless vectors produced by the fallback path.
+    const anyDegraded = embeddings.some((e) => e.degraded);
     await DocumentChunkModel.insertMany(
       chunks.map((content, index) => ({
         documentId: doc._id,
@@ -155,11 +159,18 @@ export async function uploadDocument(
         allowedRoles,
         chunkIndex: index,
         content,
-        embedding: embeddings[index] ?? [],
+        embedding: embeddings[index]?.vector ?? [],
+        embeddingDegraded: embeddings[index]?.degraded ?? false,
       })),
     );
 
     doc.status = 'indexed';
+    if (anyDegraded) {
+      // Surface in the document record so admins see the degradation in
+      // the documents list without having to inspect chunks individually.
+      doc.error =
+        'AI-01: ingested with degraded (fallback) embeddings; reindex when Ollama is back online';
+    }
     await doc.save();
     logAudit(auth, {
       action: 'document.upload',
@@ -312,8 +323,15 @@ export async function deleteDocument(auth: AuthContext, id: string): Promise<{ d
     }
   }
 
-  await DocumentChunkModel.deleteMany({ documentId });
-  await doc.deleteOne();
+  await runInTransaction(async (session) => {
+    const opts = sessionOpts(session);
+    // DB-01: chunks first, then parent. Inside a transaction the order
+    // does not matter; outside (standalone fallback) it minimises the
+    // window where retrieval could pick up an orphaned chunk pointing at
+    // an already-deleted parent document.
+    await DocumentChunkModel.deleteMany({ documentId }, opts);
+    await DocumentModel.deleteOne({ _id: documentId }, opts);
+  }, 'deleteDocument');
   logAudit(auth, {
     action: 'document.delete',
     resourceId: id,
@@ -361,6 +379,7 @@ export async function reindexDocument(auth: AuthContext, id: string): Promise<Do
     }
 
     const embeddings = await embedMany(chunks);
+    const anyDegraded = embeddings.some((e) => e.degraded);
     await DocumentChunkModel.insertMany(
       chunks.map((content, index) => ({
         documentId: doc._id,
@@ -371,13 +390,16 @@ export async function reindexDocument(auth: AuthContext, id: string): Promise<Do
         allowedRoles: doc.allowedRoles,
         chunkIndex: index,
         content,
-        embedding: embeddings[index] ?? [],
+        embedding: embeddings[index]?.vector ?? [],
+        embeddingDegraded: embeddings[index]?.degraded ?? false,
       })),
     );
 
     doc.status = 'indexed';
     doc.chunkCount = chunks.length;
-    doc.error = null;
+    doc.error = anyDegraded
+      ? 'AI-01: reindexed with degraded (fallback) embeddings; reindex when Ollama is back online'
+      : null;
     await doc.save();
     logAudit(auth, { action: 'document.reindex', resourceId: id });
     return toDto(doc);

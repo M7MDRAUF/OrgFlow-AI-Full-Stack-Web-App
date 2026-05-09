@@ -28,6 +28,12 @@ const envSchema = z.object({
     .enum(['0', '1'])
     .default('1')
     .transform((v) => v === '1'),
+  // DB-02: TTL (in days) applied to the chatLog collection. Bound history
+  // growth without losing recent context. Set to 0 to disable.
+  CHAT_LOG_TTL_DAYS: z.coerce.number().int().min(0).default(90),
+  // OPS-01: when set, rate-limit middleware switches to a Redis-backed store
+  // so a single budget is enforced across replicas. Empty string disables.
+  REDIS_URL: z.string().default(''),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;

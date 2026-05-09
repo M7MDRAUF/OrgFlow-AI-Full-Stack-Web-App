@@ -31,7 +31,24 @@ interface OllamaEmbedResponse {
   embedding?: number[];
 }
 
+/**
+ * AI-01: Result envelope so callers (ingestion, query) can detect when a
+ * vector was produced by the deterministic fallback rather than Ollama.
+ * Degraded vectors carry no semantic signal and must NEVER be persisted as
+ * if they were real embeddings — ingestion marks chunks `embeddingDegraded`
+ * and retrieval excludes them from grounded answers.
+ */
+export interface EmbedResult {
+  vector: number[];
+  degraded: boolean;
+}
+
 export async function embedText(text: string): Promise<number[]> {
+  const result = await embedTextWithStatus(text);
+  return result.vector;
+}
+
+export async function embedTextWithStatus(text: string): Promise<EmbedResult> {
   const env = loadEnv();
   const dims = env.OLLAMA_EMBED_DIMENSIONS;
   const url = `${env.OLLAMA_HOST}/api/embeddings`;
@@ -54,7 +71,7 @@ export async function embedText(text: string): Promise<number[]> {
         `Embedding dimension mismatch: expected ${String(dims)}, got ${String(data.embedding.length)}`,
       );
     }
-    return data.embedding;
+    return { vector: data.embedding, degraded: false };
   } catch (err: unknown) {
     // DA-001: Only fall back on network/availability errors. Configuration
     // errors (dimension mismatch, empty embeddings) MUST propagate so that
@@ -62,11 +79,22 @@ export async function embedText(text: string): Promise<number[]> {
     if (err instanceof Error && err.message.includes('dimension mismatch')) {
       throw err;
     }
-    getLogger(env).error(
-      { model: env.OLLAMA_EMBED_MODEL, query: text.substring(0, 100), err },
-      'Ollama embedding generation failed, using deterministic fallback',
+    // AI-01: deterministic fallback is *not* a real embedding. Emit a
+    // structured warn log every time so operators can see when the
+    // assistant has degraded into hashed-token mode, and tag the result
+    // so callers (document ingestion + retrieval) can refuse to treat it
+    // as semantically meaningful.
+    getLogger(env).warn(
+      {
+        model: env.OLLAMA_EMBED_MODEL,
+        endpoint: url,
+        textPreview: text.substring(0, 80),
+        err,
+        degraded: true,
+      },
+      'AI-01: Ollama embedding unavailable — using deterministic fallback (semantically meaningless)',
     );
-    return deterministicEmbedding(text, dims);
+    return { vector: deterministicEmbedding(text, dims), degraded: true };
   }
 }
 
@@ -74,13 +102,16 @@ export async function embedText(text: string): Promise<number[]> {
  * F-002: parallelised batch embedding. We cap concurrency to avoid saturating
  * Ollama while still being materially faster than a serial loop for large
  * documents. Order of results is preserved.
+ *
+ * AI-01: returns the per-chunk degraded flag so ingestion can mark chunks
+ * whose vector did not come from the real model.
  */
-export async function embedMany(texts: string[]): Promise<number[][]> {
+export async function embedMany(texts: string[]): Promise<EmbedResult[]> {
   const CONCURRENCY = 8;
-  const out = new Array<number[]>(texts.length);
+  const out = new Array<EmbedResult>(texts.length);
   for (let start = 0; start < texts.length; start += CONCURRENCY) {
     const slice = texts.slice(start, start + CONCURRENCY);
-    const results = await Promise.all(slice.map((t) => embedText(t)));
+    const results = await Promise.all(slice.map((t) => embedTextWithStatus(t)));
     for (let i = 0; i < results.length; i += 1) {
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       out[start + i] = results[i]!;

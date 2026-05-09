@@ -6,6 +6,9 @@ import type { AuthContext } from '../../middleware/auth-context.js';
 import { logAudit } from '../../utils/audit.js';
 import { errors } from '../../utils/errors.js';
 import { toSkipLimit, type Pagination } from '../../utils/pagination.js';
+import { runInTransaction, sessionOpts } from '../../utils/transactions.js';
+import { DocumentChunkModel } from '../ai/documents/document-chunk.model.js';
+import { DocumentModel } from '../ai/documents/document.model.js';
 import { TaskCommentModel, TaskModel } from '../tasks/task.model.js';
 import { TeamModel } from '../teams/team.model.js';
 import { UserModel } from '../users/user.model.js';
@@ -209,14 +212,33 @@ export async function deleteProject(auth: AuthContext, id: string): Promise<void
   if (auth.role !== 'admin' && !canManageTeam(auth, doc.teamId)) {
     throw errors.forbidden('Only admins or the team leader can delete this project');
   }
-  // BUG-001: Cascade-delete tasks and comments belonging to this project
+  // BUG-001 / DB-01 / DB-04: cascade-delete every record scoped to this
+  // project — tasks, comments, AI documents, and the chunks that back
+  // retrieval — under a single Mongo transaction when the cluster supports
+  // it. Without this, retrieval can keep serving citations that point at
+  // an already-deleted project (RBAC / correctness regression).
   const projectOid = doc._id;
-  const taskIds = await TaskModel.find({ projectId: projectOid }).distinct('_id');
-  if (taskIds.length > 0) {
-    await TaskCommentModel.deleteMany({ taskId: { $in: taskIds } });
-  }
-  await TaskModel.deleteMany({ projectId: projectOid });
-  await doc.deleteOne();
+  await runInTransaction(async (session) => {
+    const opts = sessionOpts(session);
+    const taskIds = await TaskModel.find({ projectId: projectOid }, null, opts).distinct('_id');
+    if (taskIds.length > 0) {
+      await TaskCommentModel.deleteMany({ taskId: { $in: taskIds } }, opts);
+    }
+    await TaskModel.deleteMany({ projectId: projectOid }, opts);
+    // Cascade AI documents + their chunks. We first collect document ids so
+    // the chunks delete is keyed on `documentId` (the chunk's primary
+    // reference), keeping the delete path consistent with reindex/upload.
+    const docIds = await DocumentModel.find(
+      { projectId: projectOid, organizationId: orgId },
+      null,
+      opts,
+    ).distinct('_id');
+    if (docIds.length > 0) {
+      await DocumentChunkModel.deleteMany({ documentId: { $in: docIds } }, opts);
+      await DocumentModel.deleteMany({ _id: { $in: docIds } }, opts);
+    }
+    await ProjectModel.deleteOne({ _id: projectOid }, opts);
+  }, 'deleteProject');
   logAudit(auth, {
     action: 'project.delete',
     resourceId: doc.id as string,

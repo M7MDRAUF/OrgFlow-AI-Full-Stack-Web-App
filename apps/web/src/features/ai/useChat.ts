@@ -63,9 +63,14 @@ export function useAskAssistant(): ReturnType<
   const qc = useQueryClient();
   return useMutation<ChatAnswerPayload, Error, ChatRequestDto>({
     mutationFn: async (input) => {
+      // AI inference (cold model load + retrieval + generation) routinely
+      // exceeds the global 30s axios default. Override per-call to 120s so
+      // first-token latency on Ollama doesn't surface as a generic timeout
+      // toast that hides the real (still-running) request.
       const res = await apiClient.post<{ success: true; data: ChatAnswerPayload }>(
         '/ai/chat',
         input,
+        { timeout: 120_000 },
       );
       const payload = res.data.data;
       return { ...payload, sources: safeCitations.parse(payload.sources) };

@@ -3,6 +3,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import { loadEnv } from '../../../app/env.js';
+import { rateLimitStoreOptions } from '../../../config/rate-limit-store.js';
 import { authMiddleware } from '../../../middleware/auth.middleware.js';
 import { requireRole } from '../../../middleware/role.middleware.js';
 import { validate } from '../../../middleware/validate.middleware.js';
@@ -26,6 +27,7 @@ const uploadLimiter = rateLimit({
     success: false,
     error: { code: 'RATE_LIMIT', message: 'Too many uploads, please try again later' },
   },
+  ...rateLimitStoreOptions('upload'),
 });
 
 export function createDocumentsRouter(): Router {
@@ -33,7 +35,19 @@ export function createDocumentsRouter(): Router {
   const env = loadEnv();
   const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: env.MAX_UPLOAD_SIZE_MB * 1024 * 1024 },
+    // OPS-03: hard caps on the multer parser so a single oversized request
+    // (or a burst of files in one upload) cannot OOM the API process.
+    // memoryStorage holds the entire file in RAM; without `files: 1` an
+    // attacker could attach N files in a single multipart body and bypass
+    // the per-file size cap. We also cap field count/size to bound the
+    // boundary parser's memory.
+    limits: {
+      fileSize: env.MAX_UPLOAD_SIZE_MB * 1024 * 1024,
+      files: 1,
+      fields: 16,
+      fieldSize: 64 * 1024,
+      headerPairs: 100,
+    },
   });
 
   router.use(authMiddleware);
