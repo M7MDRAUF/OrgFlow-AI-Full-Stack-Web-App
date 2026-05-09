@@ -9,6 +9,7 @@
 // leader / member RBAC that governs the REST API governs the assistant.
 import type {
   AiSourceCitation,
+  AnnouncementResponseDto,
   ProjectResponseDto,
   TaskResponseDto,
   TeamResponseDto,
@@ -16,6 +17,7 @@ import type {
 } from '@orgflow/shared-types';
 import { Types } from 'mongoose';
 import type { AuthContext } from '../../../middleware/auth-context.js';
+import { listAnnouncements } from '../../announcements/announcement.service.js';
 import { listProjects } from '../../projects/project.service.js';
 import { TaskModel } from '../../tasks/task.model.js';
 import { listTasks } from '../../tasks/task.service.js';
@@ -24,7 +26,10 @@ import { listTeams } from '../../teams/team.service.js';
 import { UserModel } from '../../users/user.model.js';
 import { listUsers } from '../../users/user.service.js';
 
-export type WorkspaceEntity = 'projects' | 'teams' | 'tasks' | 'users';
+// announcements is intentionally first in the list so the entity-routing
+// comment below stays accurate: the detection order is
+// announcements > tasks > projects > teams > users.
+export type WorkspaceEntity = 'announcements' | 'projects' | 'teams' | 'tasks' | 'users';
 
 export interface WorkspaceDataIntent {
   entity: WorkspaceEntity;
@@ -40,6 +45,7 @@ export interface WorkspaceDataIntent {
     | 'done'
     | 'overdue'
     | 'mine'
+    | 'unread'
     | 'all';
 }
 
@@ -65,6 +71,11 @@ const DATA_VERB_REGEX =
 const DATA_ATTRIBUTE_REGEX =
   /\b(priority|priorities|status(es)?|assignee(s)?|owner(s)?|due(\s+date)?|deadline(s)?|name(s)?|title(s)?|description(s)?|leader(s)?|member(s)?\b)\b/i;
 
+// Announcement must be tested before USER_REGEX since both can appear in the
+// same sentence; testing it first ensures "how many announcements" doesn't
+// accidentally route to the 'users' branch through MEMBER_REGEX.
+const ANNOUNCEMENT_REGEX =
+  /\b(announcement|announcements|notice|notices|bulletin|bulletins|broadcast|broadcasts)\b/i;
 const PROJECT_REGEX = /\b(project|projects)\b/i;
 const TEAM_REGEX = /\b(team|teams)\b/i;
 const TASK_REGEX = /\b(task|tasks|todo|to-do|kanban)\b/i;
@@ -79,6 +90,7 @@ const FILTER_INPROGRESS = /\b(in[- ]progress|wip|working\s+on)\b/i;
 const FILTER_DONE = /\b(done|completed|finished)\b/i;
 const FILTER_OVERDUE = /\b(overdue|late|past\s+due)\b/i;
 const FILTER_MINE = /\b(mine|my|assigned\s+to\s+me)\b/i;
+const FILTER_UNREAD = /\b(unread|not\s+read|unseen)\b/i;
 
 export function detectWorkspaceDataIntent(question: string): WorkspaceDataIntent | null {
   const q = question.trim();
@@ -89,10 +101,12 @@ export function detectWorkspaceDataIntent(question: string): WorkspaceDataIntent
   //      so phrasings like "priority of each task" still route to DATA.
   if (!DATA_VERB_REGEX.test(q) && !DATA_ATTRIBUTE_REGEX.test(q)) return null;
 
-  // Pick the entity. Order matters: tasks > projects > teams > users so
-  // "list my overdue tasks" routes to tasks even though the verb is generic.
+  // Pick the entity. Order: announcements > tasks > projects > teams > users.
+  // Announcements is checked first so "how many announcements" never falls
+  // through to USER_REGEX which also matches "member" / "members".
   let entity: WorkspaceEntity | null = null;
-  if (TASK_REGEX.test(q) || FILTER_OVERDUE.test(q) || FILTER_TODO.test(q)) entity = 'tasks';
+  if (ANNOUNCEMENT_REGEX.test(q)) entity = 'announcements';
+  else if (TASK_REGEX.test(q) || FILTER_OVERDUE.test(q) || FILTER_TODO.test(q)) entity = 'tasks';
   else if (PROJECT_REGEX.test(q)) entity = 'projects';
   else if (TEAM_REGEX.test(q)) entity = 'teams';
   else if (USER_REGEX.test(q)) entity = 'users';
@@ -110,6 +124,8 @@ export function detectWorkspaceDataIntent(question: string): WorkspaceDataIntent
     else if (FILTER_INPROGRESS.test(q)) filter = 'in-progress';
     else if (FILTER_DONE.test(q)) filter = 'done';
     else if (FILTER_TODO.test(q)) filter = 'todo';
+  } else if (entity === 'announcements') {
+    if (FILTER_UNREAD.test(q)) filter = 'unread';
   }
   return { entity, filter };
 }
@@ -210,11 +226,41 @@ function formatUsersTable(items: UserResponseDto[], teamNames: Map<string, strin
   return [header, ...rows].join('\n');
 }
 
+// Announcements are presented with their target type and read status so the
+// model can accurately answer "how many unread?" or "list team announcements".
+function formatAnnouncementsTable(items: AnnouncementResponseDto[]): string {
+  if (items.length === 0) return '(no announcements visible in your scope)';
+  const header = '| Title | Target | Read | Created |\n|---|---|---|---|';
+  const rows = items.map((a) => {
+    const read = a.readByCurrentUser ? 'yes' : 'no';
+    return `| ${a.title} | ${a.targetType} | ${read} | ${a.createdAt.slice(0, 10)} |`;
+  });
+  return [header, ...rows].join('\n');
+}
+
 export async function buildWorkspaceDataBlock(
   auth: AuthContext,
   intent: WorkspaceDataIntent,
 ): Promise<WorkspaceDataBlock> {
   const orgId = new Types.ObjectId(auth.organizationId);
+
+  // Announcements: RBAC-scoped list from the canonical announcement service.
+  // Admin sees all org announcements; leader/member see only those targeted
+  // at their organization, team, or themselves — the same filter the REST API
+  // uses. This prevents the LLM from ever inventing or over-counting records.
+  if (intent.entity === 'announcements') {
+    const unreadOnly = intent.filter === 'unread';
+    const { items, total } = await listAnnouncements(auth, { unreadOnly }, DEFAULT_PAGE);
+    const head = `ANNOUNCEMENTS (filter=${intent.filter}, scope=${auth.role}, total=${String(total)}, shown=${String(items.length)}):`;
+    return {
+      text: `${head}\n${formatAnnouncementsTable(items)}`,
+      citation: {
+        documentId: 'live-announcements',
+        title: 'Live workspace announcements',
+        chunkIndex: 0,
+      },
+    };
+  }
 
   if (intent.entity === 'projects') {
     const query: Parameters<typeof listProjects>[1] =

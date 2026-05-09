@@ -19,7 +19,7 @@ export interface StatsBlock {
 const INTENT_VERB_REGEX =
   /\b(how many|number of|count of|total(\s+(number|count))?|list(\s+(of|the))?|show(\s+me)?(\s+the)?(\s+all)?)\b/i;
 const ENTITY_REGEX =
-  /\b(user|users|member|members|people|team|teams|project|projects|task|tasks|overdue|todo|in[- ]progress|done)\b/i;
+  /\b(user|users|member|members|people|team|teams|project|projects|task|tasks|overdue|todo|in[- ]progress|done|announcement|announcements)\b/i;
 
 export function detectStatsIntent(question: string): boolean {
   return INTENT_VERB_REGEX.test(question) && ENTITY_REGEX.test(question);

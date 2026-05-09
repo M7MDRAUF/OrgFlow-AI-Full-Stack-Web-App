@@ -1,7 +1,7 @@
 // rag-chat-agent — Unit tests for the workspace data intent detector. The
-// detector picks the right entity (projects/teams/tasks/users) and the right
-// filter (active/overdue/mine/etc.) so the chat service can fetch live,
-// scope-safe rows for the user's question instead of relying purely on RAG.
+// detector picks the right entity (projects/teams/tasks/users/announcements)
+// and the right filter so the chat service can fetch live, scope-safe rows for
+// the user's question instead of relying purely on RAG.
 import { describe, expect, it } from 'vitest';
 import { detectWorkspaceDataIntent } from '../src/modules/ai/chat/workspace-data-tool.js';
 
@@ -25,6 +25,14 @@ describe('detectWorkspaceDataIntent', () => {
     ['list tasks in progress', 'tasks', 'in-progress'],
     ['show me todo tasks', 'tasks', 'todo'],
     ['count of done tasks', 'tasks', 'done'],
+    // Announcements — these were previously undetected, causing hallucination.
+    ['HOW MANY Announcements ARE THERE?', 'announcements', 'all'],
+    ['how many announcements are there', 'announcements', 'all'],
+    ['list all announcements', 'announcements', 'all'],
+    ['show me all announcements', 'announcements', 'all'],
+    ['give me my unread announcements', 'announcements', 'unread'],
+    ['show unread notices', 'announcements', 'unread'],
+    ['list bulletins', 'announcements', 'all'],
   ] as const)('routes %j -> entity=%s filter=%s', (q, entity, filter) => {
     const intent = detectWorkspaceDataIntent(q);
     expect(intent).not.toBeNull();
