@@ -54,7 +54,16 @@ export interface WorkspaceDataBlock {
 // "details (of|about)" so questions like "details of the active project"
 // trigger entity routing.
 const DATA_VERB_REGEX =
-  /\b(how\s+many|number\s+of|count(\s+of)?|total(\s+(number|count))?|list(\s+(of|the|all|me))?|show(\s+me)?(\s+the|\s+all)?|what(['’]s|\s+is|\s+are)?|tell\s+me\s+about|details?(\s+(of|about|on))?|current(ly)?\s+active|current\b|active\b|overdue\b|status(\s+of)?|name(s)?\s+of)\b/i;
+  /\b(how\s+many|number\s+of|count(\s+of)?|total(\s+(number|count))?|list(\s+(of|the|all|me))?|show(\s+me)?(\s+the|\s+all)?|give\s+me|get(\s+me)?|fetch|what(['’]s|\s+is|\s+are)?|which\b|who\b|tell\s+me\s+about|details?(\s+(of|about|on))?|current(ly)?\s+active|current\b|active\b|overdue\b|status(\s+of)?|name(s)?\s+of)\b/i;
+
+// Attribute terms that, when present together with an entity term (task,
+// project, team, user), strongly indicate the user wants per-row entity
+// data rather than RAG — even without an explicit verb. Example:
+// "priority of each task" or "due dates for my tasks". Without this fallback
+// the question slips past DATA_VERB_REGEX and we wrongly answer
+// "I could not find this in the available documents."
+const DATA_ATTRIBUTE_REGEX =
+  /\b(priority|priorities|status(es)?|assignee(s)?|owner(s)?|due(\s+date)?|deadline(s)?|name(s)?|title(s)?|description(s)?|leader(s)?|member(s)?\b)\b/i;
 
 const PROJECT_REGEX = /\b(project|projects)\b/i;
 const TEAM_REGEX = /\b(team|teams)\b/i;
@@ -74,7 +83,11 @@ const FILTER_MINE = /\b(mine|my|assigned\s+to\s+me)\b/i;
 export function detectWorkspaceDataIntent(question: string): WorkspaceDataIntent | null {
   const q = question.trim();
   if (q.length === 0) return null;
-  if (!DATA_VERB_REGEX.test(q)) return null;
+  // Two ways to qualify as a DATA question:
+  //   1. an explicit data verb ("how many", "list", "give me", …), OR
+  //   2. an entity attribute term ("priority", "status", "assignee", …)
+  //      so phrasings like "priority of each task" still route to DATA.
+  if (!DATA_VERB_REGEX.test(q) && !DATA_ATTRIBUTE_REGEX.test(q)) return null;
 
   // Pick the entity. Order matters: tasks > projects > teams > users so
   // "list my overdue tasks" routes to tasks even though the verb is generic.
