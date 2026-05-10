@@ -78,7 +78,13 @@ export function useDeleteTeam(): ReturnType<typeof useMutation<{ deleted: true }
       await apiClient.delete(`/teams/${id}`);
       return { deleted: true };
     },
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
+      // Immediately remove the deleted team from the cached list so the row
+      // disappears at once, without waiting for the background re-fetch.
+      qc.setQueriesData<TeamResponseDto[]>({ queryKey: QUERY_KEYS.teams }, (old) => {
+        if (!old) return old;
+        return old.filter((t) => t.id !== id);
+      });
       void qc.invalidateQueries({ queryKey: QUERY_KEYS.teams });
       void qc.invalidateQueries({ queryKey: QUERY_KEYS.users });
       void qc.invalidateQueries({ queryKey: QUERY_KEYS.projects });

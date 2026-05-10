@@ -37,6 +37,9 @@ generate_tp03_docxjs.cjs
 generate_speaker_guide.cjs
 generate_pptx.cjs
 generate_pptx_v2.cjs
+# temporary QA artifacts
+tmp/
+
 # coverage & test output
 coverage/
 .nyc_output/

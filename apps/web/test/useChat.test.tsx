@@ -57,7 +57,11 @@ describe('useAskAssistant', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data?.answer).toBe('AI answer here');
-    expect(mockedPost).toHaveBeenCalledWith('/ai/chat', { question: 'What is OrgFlow?' });
+    expect(mockedPost).toHaveBeenCalledWith(
+      '/ai/chat',
+      { question: 'What is OrgFlow?' },
+      { timeout: 120_000 },
+    );
   });
 
   it('handles error from API', async () => {

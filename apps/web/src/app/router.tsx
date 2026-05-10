@@ -64,8 +64,22 @@ export function AppRoutes(): JSX.Element {
           <Route index element={<DashboardPage />} />
           <Route path="tasks" element={<TasksPage />} />
           <Route path="kanban" element={<KanbanPage />} />
-          <Route path="projects" element={<ProjectsPage />} />
-          <Route path="projects/:projectId" element={<ProjectDetailPage />} />
+          <Route
+            path="projects"
+            element={
+              <RoleGuard minRole="leader">
+                <ProjectsPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="projects/:projectId"
+            element={
+              <RoleGuard minRole="leader">
+                <ProjectDetailPage />
+              </RoleGuard>
+            }
+          />
           <Route
             path="teams"
             element={

@@ -131,7 +131,13 @@ export function useDeleteTask(): ReturnType<typeof useMutation<{ deleted: true }
       await apiClient.delete(`/tasks/${id}`);
       return { deleted: true };
     },
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
+      // Immediately remove the deleted task from all cached task lists so the
+      // row disappears at once, without waiting for the background re-fetch.
+      qc.setQueriesData<TaskResponseDto[]>({ queryKey: QUERY_KEYS.tasks }, (old) => {
+        if (!old) return old;
+        return old.filter((t) => t.id !== id);
+      });
       void qc.invalidateQueries({ queryKey: QUERY_KEYS.tasks });
       toast.success('Task deleted');
     },
