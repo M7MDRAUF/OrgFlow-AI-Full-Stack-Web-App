@@ -84,4 +84,32 @@ describe('detectWorkspaceDataIntent', () => {
       expect(intent?.filter).toBe('todo');
     });
   });
+
+  describe('BY_TEAM_AGGREGATION_REGEX suppresses DATA channel', () => {
+    it('returns null for "give me by team Team Projects Tasks Overdue details" (user-reported query)', () => {
+      // This query should go to STATS (byTeam breakdown), not per-row DATA.
+      expect(
+        detectWorkspaceDataIntent('give me by team Team Projects Tasks Overdue details'),
+      ).toBeNull();
+    });
+
+    it('returns null for "by team breakdown of tasks"', () => {
+      expect(detectWorkspaceDataIntent('by team breakdown of tasks')).toBeNull();
+    });
+
+    it('returns null for "per team projects and tasks"', () => {
+      expect(detectWorkspaceDataIntent('per team projects and tasks')).toBeNull();
+    });
+
+    it('returns null for "summarize projects across teams"', () => {
+      expect(detectWorkspaceDataIntent('summarize projects across teams')).toBeNull();
+    });
+
+    it('still returns an intent for plain overdue task queries (not by-team)', () => {
+      const intent = detectWorkspaceDataIntent('list overdue tasks');
+      expect(intent).not.toBeNull();
+      expect(intent?.entity).toBe('tasks');
+      expect(intent?.filter).toBe('overdue');
+    });
+  });
 });

@@ -13,16 +13,23 @@ export interface StatsBlock {
 }
 
 // Stats-style questions: a verb phrase like "how many / number of / count of /
-// total / list / show" combined with a workspace entity keyword. The intent
-// gate is intentionally narrow so we only pay the dashboard cost when the LLM
-// is likely to need a numeric answer.
+// total / list / show / give me / details" combined with a workspace entity
+// keyword, OR an explicit "by team" / "per team" aggregation request. The
+// intent gate is intentionally broad enough to catch aggregation phrasing so
+// the dashboard's byTeam breakdown is always included for these queries.
 const INTENT_VERB_REGEX =
-  /\b(how many|number of|count of|total(\s+(number|count))?|list(\s+(of|the))?|show(\s+me)?(\s+the)?(\s+all)?)\b/i;
+  /\b(how many|number of|count of|total(\s+(number|count))?|list(\s+(of|the))?|show(\s+me)?(\s+the)?(\s+all)?|give\s+me|get\s+me|fetch|details?|breakdown|summary|summari[zs]e)\b/i;
+// "by team" / "per team" / "grouped by" aggregation phrasing always triggers
+// the stats channel even without an explicit verb like "how many".
+const BY_TEAM_REGEX = /\b(by\s+team|per\s+team|per-team|group(ed)?\s+by\s+team|across\s+teams?)\b/i;
 const ENTITY_REGEX =
   /\b(user|users|member|members|people|team|teams|project|projects|task|tasks|overdue|todo|in[- ]progress|done|announcement|announcements)\b/i;
 
 export function detectStatsIntent(question: string): boolean {
-  return INTENT_VERB_REGEX.test(question) && ENTITY_REGEX.test(question);
+  const q = question.trim();
+  // Explicit aggregation-by-team questions always need the stats channel.
+  if (BY_TEAM_REGEX.test(q)) return true;
+  return INTENT_VERB_REGEX.test(q) && ENTITY_REGEX.test(q);
 }
 
 export async function buildStatsBlock(auth: AuthContext): Promise<StatsBlock> {

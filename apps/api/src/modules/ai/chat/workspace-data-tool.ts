@@ -84,6 +84,12 @@ const TEAM_REGEX = /\b(team|teams)\b/i;
 const TASK_REGEX = /\b(task|tasks|todo|to-do|kanban)\b/i;
 const USER_REGEX = /\b(user|users|member|members|people|staff|employee|employees)\b/i;
 
+// Questions asking for grouped/aggregated data by team (e.g. "by team",
+// "breakdown", "per team") are fully answered by the STATS channel's byTeam
+// block. Routing them to the per-row DATA channel adds noise (e.g. 0 overdue
+// tasks) without providing the grouped view the user actually wants.
+const BY_TEAM_AGGREGATION_REGEX =
+  /\b(by\s+team|per\s+team|per-team|group(ed)?\s+by\s+team|across\s+teams?|breakdown|summari[zs]e)\b/i;
 const FILTER_ACTIVE = /\b(active|current|currently\s+active|in\s+progress)\b/i;
 const FILTER_PLANNED = /\b(planned|upcoming)\b/i;
 const FILTER_COMPLETED = /\b(completed|finished|done(\s+projects?)?)\b/i;
@@ -100,6 +106,10 @@ const FILTER_UNREAD = /\b(unread|not\s+read|unseen)\b/i;
 export function detectWorkspaceDataIntent(question: string): WorkspaceDataIntent | null {
   const q = question.trim();
   if (q.length === 0) return null;
+  // Aggregation/group-by questions ("by team", "breakdown", etc.) are better
+  // answered by the STATS channel's byTeam data — suppress DATA to avoid
+  // per-row noise (e.g. "0 overdue tasks") drowning out the aggregated view.
+  if (BY_TEAM_AGGREGATION_REGEX.test(q)) return null;
   // Two ways to qualify as a DATA question:
   //   1. an explicit data verb ("how many", "list", "give me", …), OR
   //   2. an entity attribute term ("priority", "status", "assignee", …)

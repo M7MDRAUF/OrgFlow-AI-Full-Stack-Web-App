@@ -78,7 +78,8 @@ function buildPrompt(
     'When citing CONTEXT documents use [1], [2] inline. Do NOT re-list sources at the end; the UI renders the sources panel separately.',
     'Do NOT prefix the reply with "STATS:", "DATA:", or "CONTEXT:" — those labels are for your internal use only.',
     // --- MISSING DATA ---
-    'If a fact cannot be found in DATA, STATS, or CONTEXT, say exactly what is missing and where it should exist. Never silently guess. The fallback reply when nothing is retrieved is: "I could not find this in the available documents."',
+    'If a fact cannot be found in DATA, STATS, or CONTEXT, say exactly what is missing and where it should exist. Never silently guess.',
+    'IMPORTANT: The fallback phrase "I could not find this in the available documents" applies ONLY when DATA, STATS, and CONTEXT are ALL completely absent or empty. If STATS or DATA is present, answer from those even if CONTEXT has no matching documents — do NOT open with the fallback phrase.',
     // --- AMBIGUITY ---
     'If the question has multiple reasonable interpretations, pick the most likely, state the assumption in one sentence, and note the alternative with its probability. Do not ask clarifying questions unless absolutely necessary.',
     // --- SECURITY & RBAC ---

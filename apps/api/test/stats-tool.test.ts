@@ -38,6 +38,22 @@ describe('detectStatsIntent', () => {
   it('detects "total tasks"', () => {
     expect(detectStatsIntent('total tasks overdue')).toBe(true);
   });
+  // New patterns added to fix "give me by team" confusion.
+  it('detects "give me by team ... details" (the user-reported wrong-answer query)', () => {
+    expect(detectStatsIntent('give me by team Team Projects Tasks Overdue details')).toBe(true);
+  });
+  it('detects "by team" aggregation without explicit verb', () => {
+    expect(detectStatsIntent('by team projects and tasks')).toBe(true);
+  });
+  it('detects "per team breakdown"', () => {
+    expect(detectStatsIntent('per team breakdown of tasks')).toBe(true);
+  });
+  it('detects "give me details" with entity', () => {
+    expect(detectStatsIntent('give me details about tasks')).toBe(true);
+  });
+  it('detects "breakdown" with entity', () => {
+    expect(detectStatsIntent('show a breakdown of projects')).toBe(true);
+  });
   it('rejects non-stats questions', () => {
     expect(detectStatsIntent('what is our onboarding policy?')).toBe(false);
     expect(detectStatsIntent('hello')).toBe(false);
