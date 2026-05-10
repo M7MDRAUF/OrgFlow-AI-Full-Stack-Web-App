@@ -170,6 +170,27 @@ async function teamNameMap(
   return new Map(teams.map((t) => [t._id.toString(), t.name]));
 }
 
+// Resolve project ObjectIds to titles so the task table can show the project
+// name instead of the raw hex projectId.
+async function projectNameMap(
+  organizationId: Types.ObjectId,
+  projectIds: string[],
+): Promise<Map<string, string>> {
+  const unique = Array.from(new Set(projectIds.filter((id) => Types.ObjectId.isValid(id))));
+  if (unique.length === 0) return new Map();
+  const objIds = unique.map((id) => new Types.ObjectId(id));
+  // ProjectModel is not imported; re-use listProjects with a large page to
+  // resolve names within the org's project set without bypassing RBAC.
+  // For the name-resolution case we query Mongoose directly via the already-
+  // available ProjectModel import path through the project service model.
+  const { ProjectModel } = await import('../../projects/project.model.js');
+  const docs = await ProjectModel.find(
+    { organizationId, _id: { $in: objIds } },
+    { _id: 1, title: 1 },
+  ).lean<{ _id: Types.ObjectId; title: string }[]>();
+  return new Map(docs.map((p) => [p._id.toString(), p.title]));
+}
+
 // Resolve user ObjectIds to display names ("Name" / fallback to email) so the
 // assistant never echoes raw 24-char hex ids to end users. Scoped to the
 // caller's organization so we cannot leak names across orgs.
@@ -219,14 +240,27 @@ function formatTeamsTable(items: TeamResponseDto[], userNames: Map<string, strin
 function formatTasksTable(
   items: TaskResponseDto[],
   teamNames: Map<string, string>,
+  projectNames: Map<string, string>,
   userNames: Map<string, string>,
 ): string {
   if (items.length === 0) return '(no tasks match this filter in your scope)';
-  const header = '| Title | Team | Status | Priority | Assignee | Due |\n|---|---|---|---|---|---|';
+  // Include explicit priority counts in the header so the model never needs
+  // to infer or count priorities from the rows — preventing hallucination.
+  const priorityCounts = { low: 0, medium: 0, high: 0 };
+  const statusCounts = { todo: 0, 'in-progress': 0, done: 0 };
+  for (const t of items) {
+    priorityCounts[t.priority] += 1;
+    statusCounts[t.status] += 1;
+  }
+  const summary =
+    `Priority counts — high:${String(priorityCounts.high)} medium:${String(priorityCounts.medium)} low:${String(priorityCounts.low)} | ` +
+    `Status counts — todo:${String(statusCounts.todo)} in-progress:${String(statusCounts['in-progress'])} done:${String(statusCounts.done)}`;
+  const header = `${summary}\n| Title | Project | Team | Status | Priority | Assignee | Due |\n|---|---|---|---|---|---|---|`;
   const rows = items.map((t) => {
+    const project = projectNames.get(t.projectId) ?? t.projectId;
     const team = teamNames.get(t.teamId) ?? t.teamId;
     const overdueMark = isOverdueIso(t.dueDate, t.status) ? ' ⚠' : '';
-    return `| ${t.title} | ${team} | ${t.status} | ${t.priority} | ${lookupName(userNames, t.assignedTo)} | ${isoToDate(t.dueDate)}${overdueMark} |`;
+    return `| ${t.title} | ${project} | ${team} | ${t.status} | ${t.priority} | ${lookupName(userNames, t.assignedTo)} | ${isoToDate(t.dueDate)}${overdueMark} |`;
   });
   return [header, ...rows].join('\n');
 }
@@ -344,18 +378,24 @@ export async function buildWorkspaceDataBlock(
     _id: { $in: filtered.map((t) => new Types.ObjectId(t.id)) },
   });
   const safeItems = orgScopeOk === filtered.length ? filtered : [];
-  const names = await teamNameMap(
-    orgId,
-    safeItems.map((t) => t.teamId),
-  );
-  const assigneeIds = safeItems
-    .map((t) => t.assignedTo)
-    .filter((id): id is string => id !== null && id !== '');
-  const userNames = await userNameMap(orgId, assigneeIds);
+  const [teamNames, projNames, userNames] = await Promise.all([
+    teamNameMap(
+      orgId,
+      safeItems.map((t) => t.teamId),
+    ),
+    projectNameMap(
+      orgId,
+      safeItems.map((t) => t.projectId),
+    ),
+    userNameMap(
+      orgId,
+      safeItems.map((t) => t.assignedTo).filter((id): id is string => id !== null && id !== ''),
+    ),
+  ]);
   const kanbanScope = intent.isKanban === true && auth.role === 'member' ? '/kanban-mine' : '';
   const head = `TASKS (filter=${intent.filter}, scope=${auth.role}${kanbanScope}, total=${String(total)}, shown=${String(safeItems.length)}):`;
   return {
-    text: `${head}\n${formatTasksTable(safeItems, names, userNames)}`,
+    text: `${head}\n${formatTasksTable(safeItems, teamNames, projNames, userNames)}`,
     citation: { documentId: 'live-tasks', title: 'Live workspace tasks', chunkIndex: 0 },
   };
 }
