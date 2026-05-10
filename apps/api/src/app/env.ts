@@ -49,8 +49,25 @@ export function loadEnv(): AppEnv {
       .join('\n');
     throw new Error(`Invalid environment variables:\n${issues}`);
   }
+  // RAG-R-005 (Expert Test Master Plan §4.3): the in-memory cosine fallback
+  // is intended for local dev / CI where no Atlas vector index exists. It
+  // returns up to 500 chunks per query and ranks them in Node — that's a
+  // RBAC + cost cliff in production. Refuse to boot if both are true.
+  if (parsed.data.NODE_ENV === 'production' && parsed.data.DEV_VECTOR_FALLBACK) {
+    throw new Error(
+      'Invalid environment variables:\n  - DEV_VECTOR_FALLBACK: must be "0" when NODE_ENV=production',
+    );
+  }
   cached = parsed.data;
   return cached;
+}
+
+/**
+ * Test-only — drops the cached env so tests can mutate `process.env` and
+ * re-load. Never call from production code paths.
+ */
+export function __resetEnvCacheForTests(): void {
+  cached = null;
 }
 
 /**

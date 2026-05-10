@@ -14,6 +14,9 @@ export default tseslint.config(
       '**/build/**',
       '**/.vite/**',
       '**/coverage/**',
+      // Python venv / scratch dirs — never our source.
+      '.venv/**',
+      'tmp/**',
       '**/*.config.js',
       '**/*.config.cjs',
       '**/*.config.mjs',
