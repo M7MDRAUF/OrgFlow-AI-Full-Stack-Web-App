@@ -9,7 +9,26 @@ export function getLogger(env: AppEnv): Logger {
   const base = {
     level: env.LOG_LEVEL,
     redact: {
-      paths: ['req.headers.authorization', 'req.headers.cookie', '*.password', '*.passwordHash'],
+      // OBS-002 (Expert Test Master Plan §4.10): every secret-shaped key must
+      // be redacted at the structured-log boundary, including AI-specific
+      // payload keys that could leak embedding vectors or chunk content.
+      paths: [
+        'req.headers.authorization',
+        'req.headers.cookie',
+        '*.password',
+        '*.passwordHash',
+        '*.token',
+        'token',
+        '*.inviteToken',
+        '*.inviteTokenHash',
+        '*.embedding',
+        'embedding',
+        '*.vector',
+        'vector',
+        '*.queryVector',
+        'queryVector',
+        '*.secret',
+      ],
       censor: '[redacted]',
     },
   };

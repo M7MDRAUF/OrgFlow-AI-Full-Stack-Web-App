@@ -33,6 +33,10 @@ describe('detectWorkspaceDataIntent', () => {
     ['give me my unread announcements', 'announcements', 'unread'],
     ['show unread notices', 'announcements', 'unread'],
     ['list bulletins', 'announcements', 'all'],
+    // Kanban — routes to tasks entity.
+    ['how many Kanban tasks are there', 'tasks', 'all'],
+    ['how many kanban are there and to do?', 'tasks', 'todo'],
+    ['show kanban board tasks', 'tasks', 'all'],
   ] as const)('routes %j -> entity=%s filter=%s', (q, entity, filter) => {
     const intent = detectWorkspaceDataIntent(q);
     expect(intent).not.toBeNull();
@@ -53,5 +57,31 @@ describe('detectWorkspaceDataIntent', () => {
   it('returns null for empty input', () => {
     expect(detectWorkspaceDataIntent('')).toBeNull();
     expect(detectWorkspaceDataIntent('   ')).toBeNull();
+  });
+
+  describe('isKanban flag', () => {
+    it('sets isKanban=true when question mentions kanban', () => {
+      const intent = detectWorkspaceDataIntent('how many kanban tasks are there?');
+      expect(intent?.isKanban).toBe(true);
+    });
+
+    it('sets isKanban=true for the exact user question that caused the AI wrong answer', () => {
+      const intent = detectWorkspaceDataIntent('how many Kanban are there and to do?');
+      expect(intent?.isKanban).toBe(true);
+      expect(intent?.entity).toBe('tasks');
+    });
+
+    it('sets isKanban=false for plain task questions', () => {
+      const intent = detectWorkspaceDataIntent('list my overdue tasks');
+      expect(intent?.isKanban).toBe(false);
+    });
+  });
+
+  describe('FILTER_TODO matches "to do" with a space', () => {
+    it('detects "to do" (space-separated) as todo filter', () => {
+      const intent = detectWorkspaceDataIntent('how many to do tasks are there?');
+      expect(intent?.entity).toBe('tasks');
+      expect(intent?.filter).toBe('todo');
+    });
   });
 });

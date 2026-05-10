@@ -73,6 +73,13 @@ const leaderAuth: AuthContext = {
   role: 'leader',
 };
 
+const memberAuth: AuthContext = {
+  userId: MEMBER_ID.toString(),
+  organizationId: ORG.toString(),
+  teamId: TEAM.toString(),
+  role: 'member',
+};
+
 describe('buildWorkspaceDataBlock — name resolution', () => {
   it('resolves task assignee ObjectId to display name', async () => {
     const block = await buildWorkspaceDataBlock(leaderAuth, { entity: 'tasks', filter: 'all' });
@@ -84,5 +91,34 @@ describe('buildWorkspaceDataBlock — name resolution', () => {
     const block = await buildWorkspaceDataBlock(leaderAuth, { entity: 'teams', filter: 'all' });
     expect(block.text).toContain('Lina Leader');
     expect(block.text).not.toContain(LEADER_ID.toString());
+  });
+});
+
+describe('buildWorkspaceDataBlock — Kanban member scoping', () => {
+  it('returns only the member\u2019s own tasks when isKanban=true and role=member', async () => {
+    // Fixture has one task assigned to MEMBER_ID.
+    const block = await buildWorkspaceDataBlock(memberAuth, {
+      entity: 'tasks',
+      filter: 'all',
+      isKanban: true,
+    });
+    expect(block.text).toContain('kanban-mine');
+    // The task assigned to the member should appear.
+    expect(block.text).toContain('Review RBAC rules');
+  });
+
+  it('does NOT apply mine filter for leaders on Kanban queries', async () => {
+    const block = await buildWorkspaceDataBlock(leaderAuth, {
+      entity: 'tasks',
+      filter: 'all',
+      isKanban: true,
+    });
+    // Header must not say kanban-mine for a leader.
+    expect(block.text).not.toContain('kanban-mine');
+  });
+
+  it('does NOT apply mine filter when isKanban is absent', async () => {
+    const block = await buildWorkspaceDataBlock(memberAuth, { entity: 'tasks', filter: 'all' });
+    expect(block.text).not.toContain('kanban-mine');
   });
 });
