@@ -47,6 +47,9 @@ export interface WorkspaceDataIntent {
     | 'mine'
     | 'unread'
     | 'all';
+  // true when the question specifically mentions the Kanban board. Used to
+  // mirror the Kanban page's default behaviour (My tasks only for members).
+  isKanban?: boolean;
 }
 
 export interface WorkspaceDataBlock {
@@ -85,7 +88,9 @@ const FILTER_ACTIVE = /\b(active|current|currently\s+active|in\s+progress)\b/i;
 const FILTER_PLANNED = /\b(planned|upcoming)\b/i;
 const FILTER_COMPLETED = /\b(completed|finished|done(\s+projects?)?)\b/i;
 const FILTER_ARCHIVED = /\barchived\b/i;
-const FILTER_TODO = /\b(todo|to-do|backlog)\b/i;
+// Matches "todo", "to-do" (hyphen), "to do" (space) and "backlog".
+const FILTER_TODO = /\b(todo|to[- ]do|backlog)\b/i;
+const KANBAN_REGEX = /\bkanban\b/i;
 const FILTER_INPROGRESS = /\b(in[- ]progress|wip|working\s+on)\b/i;
 const FILTER_DONE = /\b(done|completed|finished)\b/i;
 const FILTER_OVERDUE = /\b(overdue|late|past\s+due)\b/i;
@@ -127,7 +132,7 @@ export function detectWorkspaceDataIntent(question: string): WorkspaceDataIntent
   } else if (entity === 'announcements') {
     if (FILTER_UNREAD.test(q)) filter = 'unread';
   }
-  return { entity, filter };
+  return { entity, filter, isKanban: KANBAN_REGEX.test(q) };
 }
 
 const DEFAULT_PAGE = { page: 1, pageSize: 50 } as const;
@@ -314,6 +319,11 @@ export async function buildWorkspaceDataBlock(
     tQuery.status = intent.filter;
   }
   if (intent.filter === 'mine') tQuery.mine = true;
+  // Mirror the Kanban page default: members have "My tasks only" pre-checked
+  // on the Kanban board. When a member asks about Kanban tasks we restrict the
+  // query to their own assigned tasks so the AI's answer matches what they
+  // actually see — not the full project-wide task list.
+  if (intent.isKanban === true && auth.role === 'member') tQuery.mine = true;
   const { items, total } = await listTasks(auth, tQuery, DEFAULT_PAGE);
   const filtered =
     intent.filter === 'overdue' ? items.filter((t) => isOverdueIso(t.dueDate, t.status)) : items;
@@ -332,7 +342,8 @@ export async function buildWorkspaceDataBlock(
     .map((t) => t.assignedTo)
     .filter((id): id is string => id !== null && id !== '');
   const userNames = await userNameMap(orgId, assigneeIds);
-  const head = `TASKS (filter=${intent.filter}, scope=${auth.role}, total=${String(total)}, shown=${String(safeItems.length)}):`;
+  const kanbanScope = intent.isKanban === true && auth.role === 'member' ? '/kanban-mine' : '';
+  const head = `TASKS (filter=${intent.filter}, scope=${auth.role}${kanbanScope}, total=${String(total)}, shown=${String(safeItems.length)}):`;
   return {
     text: `${head}\n${formatTasksTable(safeItems, names, userNames)}`,
     citation: { documentId: 'live-tasks', title: 'Live workspace tasks', chunkIndex: 0 },
