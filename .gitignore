@@ -40,6 +40,9 @@ generate_pptx_v2.cjs
 # temporary QA artifacts
 tmp/
 
+# agent orchestration contract (local only)
+AGENTS.md
+
 # coverage & test output
 coverage/
 .nyc_output/
