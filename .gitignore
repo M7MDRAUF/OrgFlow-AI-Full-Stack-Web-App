@@ -39,10 +39,11 @@ generate_pptx.cjs
 generate_pptx_v2.cjs
 # temporary QA artifacts
 tmp/
-
+scripts/
 # agent orchestration contract (local only)
 AGENTS.md
-
+images/
+Ultra_Expert_TP02_Masters_Report_Prompt.md
 # coverage & test output
 coverage/
 .nyc_output/
