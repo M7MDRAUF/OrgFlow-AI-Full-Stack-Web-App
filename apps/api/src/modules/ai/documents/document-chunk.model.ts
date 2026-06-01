@@ -19,6 +19,14 @@ export interface DocumentChunkDoc {
    * from grounded retrieval. Re-index after restoring Ollama to clear.
    */
   embeddingDegraded: boolean;
+  /**
+   * MEDIUM-10: minimum role rank required to access this chunk.
+   * 0 = member (any role), 1 = leader+, 2 = admin only.
+   * Derived from allowedRoles at ingest time so it can be used as a
+   * numeric pre-filter inside Atlas $vectorSearch (allowedRoles array
+   * with $size is not supported in the vectorSearch pre-filter).
+   */
+  minRoleRank: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -55,6 +63,9 @@ const chunkSchema = new Schema<DocumentChunkDoc>(
     // AI-01: defaults to false so legacy chunks (pre-migration) are
     // treated as real embeddings; fresh ingests explicitly set this.
     embeddingDegraded: { type: Boolean, default: false, index: true },
+    // MEDIUM-10: numeric rank for $vectorSearch pre-filter (0=member, 1=leader, 2=admin).
+    // Default 0 means all legacy chunks are treated as member-accessible.
+    minRoleRank: { type: Number, default: 0, index: true },
   },
   { timestamps: true },
 );

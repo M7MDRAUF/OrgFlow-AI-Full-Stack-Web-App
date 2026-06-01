@@ -59,6 +59,8 @@ beforeAll(async () => {
     chunkIndex: 0,
     content: 'healthy chunk',
     embedding: zeroVec,
+    // BUG-LOW-19: embeddingDegraded is required by DocumentChunkDoc; false = healthy.
+    embeddingDegraded: false,
   };
   await DocumentChunkModel.create(chunkA);
 

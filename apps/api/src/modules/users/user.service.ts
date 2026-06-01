@@ -124,11 +124,30 @@ export async function updateUser(
   const user = await findScopedUser(auth, id);
   const isSelf = auth.userId === id;
 
+  // BUG-LOW-4: permission check BEFORE any field mutations (previously placed
+  // after mutation assignments, meaning the forbidden check ran on a dirty doc).
+  // BUG-MEDIUM-2: leaders need to manage their team members; only admins can
+  // update users they don't own OR perform privileged operations below.
+  if (!isSelf && auth.role !== 'admin') {
+    throw errors.forbidden();
+  }
+
   if (input.name !== undefined) user.displayName = input.name;
   if (input.themePreference !== undefined) user.themePreference = input.themePreference;
 
   if (input.role !== undefined) {
     if (auth.role !== 'admin') throw errors.forbidden('Only admins can change roles');
+    // BUG-MEDIUM-9: guard against demoting the last admin in the org.
+    if (input.role !== 'admin' && user.role === 'admin') {
+      const adminCount = await UserModel.countDocuments({
+        organizationId: new Types.ObjectId(auth.organizationId),
+        role: 'admin',
+        status: 'active',
+      });
+      if (adminCount <= 1) {
+        throw errors.conflict('Cannot demote the last active admin in the organization');
+      }
+    }
     const previousRole = user.role;
     user.role = input.role;
     // F6: role changes are privileged and must leave an audit trail.
@@ -161,9 +180,7 @@ export async function updateUser(
   }
 
   // Members may only update their own themePreference/name.
-  if (!isSelf && auth.role === 'member') {
-    throw errors.forbidden();
-  }
+  // (Moved to the top of the function — see BUG-LOW-4 fix comment above.)
 
   await user.save();
   return toUserResponseDto(user);
@@ -176,6 +193,17 @@ export async function updateUserStatus(
 ): Promise<UserResponseDto> {
   if (auth.role !== 'admin') throw errors.forbidden('Only admins can change user status');
   const user = await findScopedUser(auth, id);
+  // BUG-MEDIUM-9: guard against disabling the last active admin.
+  if (input.status === 'disabled' && user.role === 'admin') {
+    const adminCount = await UserModel.countDocuments({
+      organizationId: new Types.ObjectId(auth.organizationId),
+      role: 'admin',
+      status: 'active',
+    });
+    if (adminCount <= 1) {
+      throw errors.conflict('Cannot disable the last active admin in the organization');
+    }
+  }
   const previousStatus = user.status;
   user.status = input.status;
   await user.save();

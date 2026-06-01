@@ -24,6 +24,9 @@ export default tseslint.config(
       '**/vite.config.ts',
       '**/vitest.config.ts',
       'eslint.config.mjs',
+      // BUG-LOW-5: gitignored local-only academic report scripts; ESLint must
+      // skip them so `npm run lint` passes consistently on developer machines.
+      'scripts/**',
     ],
   },
   js.configs.recommended,

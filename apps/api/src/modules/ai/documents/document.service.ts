@@ -19,6 +19,16 @@ import type { ListDocumentsQuery, UploadDocumentInput } from './document.schema.
 import { assertMimeMatchesMagic } from './mime-detect.js';
 import { extractText } from './parser.js';
 
+/** MEDIUM-10: compute minRoleRank from an allowedRoles array.
+ *  0 = any role (member+), 1 = leader+, 2 = admin only.
+ *  When empty (unrestricted), minRoleRank is 0.
+ */
+function computeMinRoleRank(allowedRoles: UserRole[]): number {
+  if (allowedRoles.length === 0) return 0;
+  const rankOf: Record<UserRole, number> = { member: 0, leader: 1, admin: 2 };
+  return Math.min(...allowedRoles.map((r) => rankOf[r]));
+}
+
 function assertObjectId(id: string, label: string): Types.ObjectId {
   if (!Types.ObjectId.isValid(id)) throw errors.validation(`Invalid ${label}`);
   return new Types.ObjectId(id);
@@ -121,7 +131,14 @@ export async function uploadDocument(
     const parsed = await extractText(file.buffer, file.mimetype, file.originalname);
     const chunks = chunkText(parsed.text);
 
-    // Persist raw text so reindex can re-chunk/re-embed without the original file.
+    // Persist raw text so reindex can re-chunk/re-embed without the original
+    // file. NOTE (BUG-LOW-18): rawText is stored in plaintext in MongoDB and is
+    // accessible to any process with direct DB read access. It is intentionally
+    // excluded from all API responses (toDto never returns it) so it is not
+    // exposed over the network. Full mitigation requires MongoDB Client-Side
+    // Field Level Encryption (CSFLE) — tracked as a post-launch hardening task.
+    // Stripping rawText after indexing would prevent reindexing without
+    // re-uploading the original file, which is an unacceptable UX trade-off.
     doc.rawText = parsed.text;
 
     if (chunks.length === 0) {
@@ -142,6 +159,8 @@ export async function uploadDocument(
 
     const embeddings = await embedMany(chunks);
     const allowedRoles: UserRole[] = input.allowedRoles ?? [];
+    // MEDIUM-10: precompute minRoleRank for Atlas $vectorSearch pre-filter.
+    const minRoleRank = computeMinRoleRank(allowedRoles);
     // F-004: cleanup any previously-inserted partial chunks before retry.
     // insertMany failures (network blip, dup key) would otherwise leave the
     // document in a half-indexed state that retrieval would still serve.
@@ -157,6 +176,7 @@ export async function uploadDocument(
         projectId,
         visibility: input.visibility,
         allowedRoles,
+        minRoleRank,
         chunkIndex: index,
         content,
         embedding: embeddings[index]?.vector ?? [],
@@ -388,6 +408,8 @@ export async function reindexDocument(auth: AuthContext, id: string): Promise<Do
         projectId: doc.projectId,
         visibility: doc.visibility,
         allowedRoles: doc.allowedRoles,
+        // MEDIUM-10: recompute minRoleRank on reindex in case allowedRoles changed.
+        minRoleRank: computeMinRoleRank(doc.allowedRoles),
         chunkIndex: index,
         content,
         embedding: embeddings[index]?.vector ?? [],

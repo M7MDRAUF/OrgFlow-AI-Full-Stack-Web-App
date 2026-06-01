@@ -188,12 +188,31 @@ function UploadDocumentModal({ onClose }: UploadDocumentModalProps): JSX.Element
     label: v,
   }));
 
+  // BUG-HIGH-3: validate file size and MIME type before uploading to prevent
+  // uploading arbitrary/malicious files and to give the user clear feedback.
+  const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+  const ALLOWED_MIME_TYPES = [
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'text/plain',
+    'text/markdown',
+  ] as const;
+
   const handleSubmit = (e: FormEvent<HTMLFormElement>): void => {
     e.preventDefault();
     setError(null);
 
     if (selectedFile === null) {
       setError('Please select a file to upload.');
+      return;
+    }
+    // BUG-HIGH-3: validate size and MIME type
+    if (selectedFile.size > MAX_FILE_SIZE_BYTES) {
+      setError('File must be smaller than 10 MB.');
+      return;
+    }
+    if (!(ALLOWED_MIME_TYPES as readonly string[]).includes(selectedFile.type)) {
+      setError('Only PDF, DOCX, TXT, and Markdown files are allowed.');
       return;
     }
     const trimmedTitle = title.trim();

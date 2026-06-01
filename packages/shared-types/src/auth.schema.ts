@@ -22,6 +22,7 @@ export const newPasswordSchema = passwordSchema.superRefine((val, ctx) => {
 export const loginSchema = z.object({
   email: z.string().email().toLowerCase().trim(),
   password: passwordSchema,
+  organizationSlug: z.string().min(1).max(100).toLowerCase().trim(),
 });
 
 export const inviteSchema = z.object({

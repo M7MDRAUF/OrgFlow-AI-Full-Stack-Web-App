@@ -66,10 +66,20 @@ export function InviteUserModal(props: InviteUserModalProps): JSX.Element {
     >
       {inviteToken !== null ? (
         <div className="flex flex-col gap-2">
-          <p className="text-sm">Share this activation link (valid for 7 days):</p>
-          <code className="block break-all rounded bg-slate-100 p-2 text-xs dark:bg-slate-800">
-            {window.location.origin}/activate?token={inviteToken}
-          </code>
+          <p className="text-sm">Activation link generated (valid for 7 days).</p>
+          {/* BUG-LOW-23: do NOT render the raw token in the DOM — use clipboard
+              copy instead so the single-use token is not accessible to XSS or
+              browser extensions inspecting the DOM. */}
+          <Button
+            variant="ghost"
+            onClick={() => {
+              void navigator.clipboard.writeText(
+                `${window.location.origin}/activate?token=${inviteToken}`,
+              );
+            }}
+          >
+            Copy invite link
+          </Button>
         </div>
       ) : (
         <form

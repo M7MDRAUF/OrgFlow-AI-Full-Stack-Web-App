@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authMiddleware } from '../../middleware/auth.middleware.js';
+import { requireRole } from '../../middleware/role.middleware.js';
 import { validate } from '../../middleware/validate.middleware.js';
 import { asyncHandler } from '../../utils/async-handler.js';
 import {
@@ -76,7 +77,12 @@ export function createProjectsRouter(): Router {
    *       201:
    *         description: Created project
    */
-  router.post('/', validate({ body: createProjectSchema }), asyncHandler(createProjectHandler));
+  router.post(
+    '/',
+    requireRole('leader'),
+    validate({ body: createProjectSchema }),
+    asyncHandler(createProjectHandler),
+  );
   /**
    * @openapi
    * /projects/{id}:
@@ -104,7 +110,12 @@ export function createProjectsRouter(): Router {
    *       404:
    *         description: Project not found
    */
-  router.patch('/:id', validate({ body: updateProjectSchema }), asyncHandler(updateProjectHandler));
+  router.patch(
+    '/:id',
+    requireRole('leader'),
+    validate({ body: updateProjectSchema }),
+    asyncHandler(updateProjectHandler),
+  );
   /**
    * @openapi
    * /projects/{id}:
@@ -122,6 +133,6 @@ export function createProjectsRouter(): Router {
    *       404:
    *         description: Project not found
    */
-  router.delete('/:id', asyncHandler(deleteProjectHandler));
+  router.delete('/:id', requireRole('leader'), asyncHandler(deleteProjectHandler));
   return router;
 }

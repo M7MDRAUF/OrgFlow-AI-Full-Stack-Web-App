@@ -14,6 +14,7 @@ import type { AuthContext } from '../../middleware/auth-context.js';
 import { signAuthToken } from '../../middleware/auth.middleware.js';
 import { logAudit } from '../../utils/audit.js';
 import { errors } from '../../utils/errors.js';
+import { OrganizationModel } from '../organizations/organization.model.js';
 import { TeamModel } from '../teams/team.model.js';
 import { UserModel, type UserHydrated } from '../users/user.model.js';
 import type { CompleteInviteInput, InviteInput, LoginInput } from './auth.schema.js';
@@ -52,7 +53,18 @@ function issueToken(user: UserHydrated): string {
 }
 
 export async function login(input: LoginInput): Promise<LoginResponseDto> {
-  const user = await UserModel.findOne({ email: input.email });
+  // BUG-CRITICAL-1: scope lookup by organization slug to prevent cross-tenant
+  // authentication bypass in multi-tenant deployments.
+  const org = await OrganizationModel.findOne({ slug: input.organizationSlug });
+  if (!org) {
+    // Equalise timing — do a dummy bcrypt compare to prevent org-enumeration.
+    await bcrypt.compare(
+      input.password,
+      '$2b$12$0000000000000000000000000000000000000000000000000000',
+    );
+    throw errors.unauthenticated('Invalid credentials');
+  }
+  const user = await UserModel.findOne({ email: input.email, organizationId: org._id });
   if (user?.status !== 'active' || user.passwordHash === null) {
     // Equalise timing with a dummy bcrypt compare to prevent user-enumeration
     // side-channel attacks (attacker can't distinguish "no user" from "wrong password").
@@ -76,11 +88,16 @@ export async function login(input: LoginInput): Promise<LoginResponseDto> {
   return { token: issueToken(user), user: toUserResponseDto(user) };
 }
 
-export async function getCurrentUser(userId: string): Promise<MeResponseDto> {
-  if (!Types.ObjectId.isValid(userId)) {
+// BUG-LOW-3: Accept full AuthContext so the query is scoped by organizationId,
+// matching the standard scope filter pattern (Rule 03).
+export async function getCurrentUser(auth: AuthContext): Promise<MeResponseDto> {
+  if (!Types.ObjectId.isValid(auth.userId)) {
     throw errors.unauthenticated();
   }
-  const user = await UserModel.findById(userId);
+  const user = await UserModel.findOne({
+    _id: auth.userId,
+    organizationId: auth.organizationId,
+  });
   if (!user || user.status === 'disabled') {
     throw errors.unauthenticated();
   }
@@ -146,20 +163,29 @@ export async function completeInvite(
   input: CompleteInviteInput,
 ): Promise<CompleteInviteResponseDto> {
   const tokenHash = hashInviteToken(input.token);
-  const user = await UserModel.findOne({ inviteTokenHash: tokenHash });
-  if (
-    user?.status !== 'pending' ||
-    user.inviteExpiresAt === null ||
-    user.inviteExpiresAt.getTime() < Date.now()
-  ) {
+  // BUG-LOW-9: use findOneAndUpdate with the full status+expiry filter to make
+  // token invalidation atomic, eliminating the TOCTOU race where two concurrent
+  // requests with the same token both pass the status check before either saves.
+  const passwordHash = await bcrypt.hash(input.password, BCRYPT_COST);
+  const user = await UserModel.findOneAndUpdate(
+    {
+      inviteTokenHash: tokenHash,
+      status: 'pending',
+      inviteExpiresAt: { $gt: new Date() },
+    },
+    {
+      $set: {
+        passwordHash,
+        status: 'active',
+        inviteTokenHash: null,
+        inviteExpiresAt: null,
+      },
+    },
+    { new: true },
+  );
+  if (!user) {
     throw errors.unauthenticated('Invite token invalid or expired');
   }
-  const passwordHash = await bcrypt.hash(input.password, BCRYPT_COST);
-  user.passwordHash = passwordHash;
-  user.status = 'active';
-  user.inviteTokenHash = null;
-  user.inviteExpiresAt = null;
-  await user.save();
   return { token: issueToken(user), user: toUserResponseDto(user) };
 }
 

@@ -14,6 +14,8 @@ import type { AuthContext } from '../../../middleware/auth-context.js';
 import { logAudit } from '../../../utils/audit.js';
 import { errors } from '../../../utils/errors.js';
 import { retrieveChunks, type RetrievedChunk } from '../retrieval.js';
+import { ProjectModel } from '../../projects/project.model.js';
+import { TeamModel } from '../../teams/team.model.js';
 import { ChatLogModel } from './chat-log.model.js';
 import type { ChatRequestInput } from './chat.schema.js';
 import {
@@ -60,15 +62,6 @@ function buildPrompt(
         `[${String(i + contextStartIndex)}] ${c.documentTitle} (chunk ${String(c.chunkIndex)}):\n${c.content}`,
     )
     .join('\n\n');
-  // H-001: isolate user input with explicit delimiters to defend against
-  // prompt injection. The real safety guarantee is RBAC-scoped retrieval —
-  // we cannot leak chunks the caller is not authorised to see.
-  //
-  // System prompt: workspace-wide knowledge orchestrator with structured
-  // answer format, cross-source correlation, probabilistic confidence, and
-  // strict anti-hallucination. All three retrieval channels are injected
-  // below (DATA / STATS / CONTEXT) and the model must reason across all of
-  // them before answering.
   const system = [
     // --- ROLE ---
     'You are the OrgFlow workspace-wide knowledge orchestrator: a senior data analyst, system auditor, and trusted product expert.',
@@ -109,7 +102,10 @@ function buildPrompt(
     statsText !== null
       ? `STATS ${statsCitationLabel} (live, authoritative — cite as ${statsCitationLabel}):\n<<<\n${statsText}\n>>>\n\n`
       : '';
-  const user = `USER_QUESTION:\n<<<\n${question}\n>>>\n\n${dataSection}${statsSection}CONTEXT:\n<<<\n${contextBlock}\n>>>`;
+  // H-001 / BUG-MEDIUM-12: sanitise `>>>` sequences to prevent prompt-injection
+  // escapes from the delimited USER_QUESTION block.
+  const safeQuestion = question.replace(/>>>/g, '> > >');
+  const user = `USER_QUESTION:\n<<<\n${safeQuestion}\n>>>\n\n${dataSection}${statsSection}CONTEXT:\n<<<\n${contextBlock}\n>>>`;
   return [
     { role: 'system', content: system },
     { role: 'user', content: user },
@@ -120,6 +116,17 @@ async function callOllamaChat(messages: OllamaChatMessage[]): Promise<string | n
   const env = loadEnv();
   const logger = getLogger(env);
   const promptLength = messages.reduce((sum, m) => sum + m.content.length, 0);
+  // BUG-MEDIUM-11: guard against excessively large prompts that could cause
+  // Ollama to OOM or time-out. ~100k chars ≈ 25k tokens is well above what
+  // the model can meaningfully process and provides a safety cap.
+  const MAX_PROMPT_CHARS = 100_000;
+  if (promptLength > MAX_PROMPT_CHARS) {
+    logger.warn(
+      { promptLength, limit: MAX_PROMPT_CHARS },
+      'Prompt exceeds MAX_PROMPT_CHARS; request rejected to prevent OOM',
+    );
+    return null;
+  }
   try {
     const response = await fetch(`${env.OLLAMA_HOST}/api/chat`, {
       method: 'POST',
@@ -199,8 +206,38 @@ export async function askQuestion(
   }
 
   const scope: Parameters<typeof retrieveChunks>[2] = {};
-  if (input.teamId !== undefined) scope.teamId = input.teamId;
-  if (input.projectId !== undefined) scope.projectId = input.projectId;
+  // BUG-LOW-20: validate teamId/projectId belong to caller's org before
+  // using them as retrieval scope filters (defense-in-depth).
+  if (input.teamId !== undefined) {
+    const teamObjId = Types.ObjectId.isValid(input.teamId)
+      ? new Types.ObjectId(input.teamId)
+      : null;
+    if (
+      teamObjId === null ||
+      !(await TeamModel.exists({
+        _id: teamObjId,
+        organizationId: new Types.ObjectId(auth.organizationId),
+      }))
+    ) {
+      throw errors.forbidden('Invalid teamId scope');
+    }
+    scope.teamId = input.teamId;
+  }
+  if (input.projectId !== undefined) {
+    const projectObjId = Types.ObjectId.isValid(input.projectId)
+      ? new Types.ObjectId(input.projectId)
+      : null;
+    if (
+      projectObjId === null ||
+      !(await ProjectModel.exists({
+        _id: projectObjId,
+        organizationId: new Types.ObjectId(auth.organizationId),
+      }))
+    ) {
+      throw errors.forbidden('Invalid projectId scope');
+    }
+    scope.projectId = input.projectId;
+  }
 
   // Run document retrieval, the live stats lookup, and the live entity-data
   // lookup in parallel. Each is gated by its own intent detector so we only

@@ -26,8 +26,17 @@ export function EditAnnouncementModal({
       setError('Title is required.');
       return;
     }
+    // BUG-LOW-25: enforce max-length on the client to avoid confusing API 400 errors.
+    if (trimmedTitle.length > 200) {
+      setError('Title must be 200 characters or fewer.');
+      return;
+    }
     if (trimmedBody.length < 10) {
       setError('Body must be at least 10 characters.');
+      return;
+    }
+    if (trimmedBody.length > 2000) {
+      setError('Body must be 2000 characters or fewer.');
       return;
     }
     const input: { title?: string; body?: string } = {};

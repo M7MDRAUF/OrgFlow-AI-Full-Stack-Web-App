@@ -111,9 +111,11 @@ describe('smoke integration — full API lifecycle', () => {
   // ── Auth flow ──────────────────────────────────────────────────────────
 
   it('admin can login via HTTP and receive a JWT token', async () => {
-    const res = await request(app)
-      .post('/api/v1/auth/login')
-      .send({ email: 'smoke-admin@test.io', password: ADMIN_PASSWORD });
+    const res = await request(app).post('/api/v1/auth/login').send({
+      email: 'smoke-admin@test.io',
+      password: ADMIN_PASSWORD,
+      organizationSlug: 'smoke-org',
+    });
 
     expect(res.status).toBe(200);
     const body = res.body as {

@@ -5,6 +5,7 @@ import type { UserResponseDto } from './user.js';
 export interface LoginRequestDto {
   email: string;
   password: string;
+  organizationSlug: string;
 }
 
 export interface LoginResponseDto {

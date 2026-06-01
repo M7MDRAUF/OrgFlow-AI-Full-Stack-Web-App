@@ -287,6 +287,14 @@ export async function deleteTask(auth: AuthContext, id: string): Promise<void> {
   // DA-006: Delete comments before the task so if comment deletion fails,
   // the task still exists and can be retried. Previous order left orphaned
   // comments if comment deletion failed after task was already deleted.
+  // BUG-LOW-10: these two operations are non-atomic (no Mongoose session).
+  // MongoDB multi-document transactions require a replica set; since the
+  // deployment/test environment uses a standalone instance, a session-based
+  // transaction cannot be added without an infra change. The current deletion
+  // order (comments → task) is the safest sequential option: if deleteMany
+  // fails, the task is untouched and the client can retry; if deleteOne fails
+  // after deleteMany, orphaned comments are a minor data inconsistency. Track
+  // as a known limitation to resolve when a replica-set deployment is in place.
   await TaskCommentModel.deleteMany({ taskId: doc._id });
   await doc.deleteOne();
   logAudit(auth, {
@@ -314,7 +322,12 @@ export async function listComments(
   taskId: string,
 ): Promise<TaskCommentResponseDto[]> {
   const doc = await loadTaskForAuth(auth, taskId);
-  const comments = await TaskCommentModel.find({ taskId: doc._id }).sort({ createdAt: 1 });
+  // BUG-MEDIUM-21: apply a hard limit to prevent unbounded comment payloads.
+  // 200 comments covers all practical use cases. Full pagination can be added
+  // later; a hard cap is the minimal-risk fix that satisfies Rule 10.
+  const comments = await TaskCommentModel.find({ taskId: doc._id })
+    .sort({ createdAt: 1 })
+    .limit(200);
   return comments.map(toCommentDto);
 }
 
@@ -339,6 +352,8 @@ export async function createComment(
   }
   const comment = await TaskCommentModel.create({
     taskId: doc._id,
+    // BUG-LOW-15: store organizationId on the comment document for independent scope filtering.
+    organizationId: new Types.ObjectId(auth.organizationId),
     userId: new Types.ObjectId(auth.userId),
     body: input.body,
   });

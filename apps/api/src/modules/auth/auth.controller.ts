@@ -15,7 +15,7 @@ export async function meHandler(req: Request, res: Response): Promise<void> {
   if (!req.auth) {
     throw errors.unauthenticated();
   }
-  const result = await authService.getCurrentUser(req.auth.userId);
+  const result = await authService.getCurrentUser(req.auth);
   sendSuccess(res, result);
 }
 

@@ -53,11 +53,12 @@ async function assertTargetExists(
   if (!user) throw errors.notFound('User not found');
 }
 
-function assertCanCreate(
+async function assertCanCreate(
   auth: AuthContext,
+  orgId: Types.ObjectId,
   targetType: 'organization' | 'team' | 'user',
   targetId: Types.ObjectId,
-): void {
+): Promise<void> {
   if (auth.role === 'admin') return;
   if (auth.role === 'leader') {
     if (targetType === 'organization') {
@@ -66,6 +67,20 @@ function assertCanCreate(
     if (auth.teamId === null) throw errors.forbidden('Leader has no team assigned');
     if (targetType === 'team' && targetId.toString() !== auth.teamId) {
       throw errors.forbidden('Leaders can only post to their own team');
+    }
+    // BUG-MEDIUM-22: leaders may only DM members of their own team,
+    // not arbitrary users in the organization.
+    if (targetType === 'user') {
+      const targetUser = await UserModel.findOne({
+        _id: targetId,
+        organizationId: orgId,
+        teamId: new Types.ObjectId(auth.teamId),
+      });
+      if (!targetUser) {
+        throw errors.forbidden(
+          'Leaders can only send direct messages to members of their own team',
+        );
+      }
     }
     return;
   }
@@ -143,7 +158,7 @@ export async function createAnnouncement(
   const orgId = new Types.ObjectId(auth.organizationId);
   const userId = new Types.ObjectId(auth.userId);
   const targetId = assertObjectId(input.targetId, 'target id');
-  assertCanCreate(auth, input.targetType, targetId);
+  await assertCanCreate(auth, orgId, input.targetType, targetId);
   await assertTargetExists(orgId, input.targetType, targetId);
 
   const doc = await AnnouncementModel.create({
@@ -220,8 +235,8 @@ export async function markAnnouncementRead(
   // Atomic $addToSet avoids TOCTOU race when concurrent requests mark the
   // same announcement as read — no duplicate entries possible.
   await AnnouncementModel.updateOne({ _id: announcementId }, { $addToSet: { readBy: userId } });
-  // Re-read to return fresh state (readBy now guaranteed to include userId).
-  const updated = await AnnouncementModel.findById(announcementId);
+  // BUG-LOW-12: Re-read with organizationId scope to prevent cross-org disclosure.
+  const updated = await AnnouncementModel.findOne({ _id: announcementId, organizationId: orgId });
   if (!updated) throw errors.notFound('Announcement not found');
   return toDto(updated, userId);
 }

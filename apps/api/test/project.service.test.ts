@@ -157,6 +157,7 @@ describe('project delete cascade (BUG-001)', () => {
     });
     await TaskCommentModel.create({
       taskId: task._id,
+      organizationId: ORG,
       userId: LEADER_ID,
       body: 'cascade comment',
     });

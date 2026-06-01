@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authMiddleware } from '../../middleware/auth.middleware.js';
+import { requireRole } from '../../middleware/role.middleware.js';
 import { validate } from '../../middleware/validate.middleware.js';
 import { asyncHandler } from '../../utils/async-handler.js';
 import {
@@ -93,6 +94,7 @@ export function createAnnouncementsRouter(): Router {
    */
   router.post(
     '/',
+    requireRole('leader'),
     validate({ body: createAnnouncementSchema }),
     asyncHandler(createAnnouncementHandler),
   );
@@ -124,6 +126,7 @@ export function createAnnouncementsRouter(): Router {
    */
   router.patch(
     '/:id',
+    requireRole('leader'),
     validate({ body: updateAnnouncementSchema }),
     asyncHandler(updateAnnouncementHandler),
   );
@@ -144,7 +147,7 @@ export function createAnnouncementsRouter(): Router {
    *       404:
    *         description: Announcement not found
    */
-  router.delete('/:id', asyncHandler(deleteAnnouncementHandler));
+  router.delete('/:id', requireRole('leader'), asyncHandler(deleteAnnouncementHandler));
   /**
    * @openapi
    * /announcements/{id}/read:

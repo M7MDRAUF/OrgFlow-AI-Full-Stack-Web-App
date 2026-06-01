@@ -21,11 +21,23 @@ export class AppErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundar
   }
 
   override componentDidCatch(error: Error, info: ErrorInfo): void {
-    console.error('[AppErrorBoundary]', error, info.componentStack);
+    // BUG-LOW-24: only log the full component stack in development so production
+    // builds don't leak internal React tree structure to the browser console or
+    // any observability tooling that captures console output.
+    if (import.meta.env.DEV) {
+      console.error('[AppErrorBoundary]', error, info.componentStack);
+    } else {
+      console.error('[AppErrorBoundary]', error.message);
+    }
   }
 
+  // BUG-MEDIUM-17: reload the page instead of just clearing hasError state.
+  // setState({ hasError: false }) triggers a re-render of the subtree; if the
+  // root cause persists, getDerivedStateFromError fires again immediately,
+  // creating a rapid render loop. A full page reload clears all transient state
+  // and gives the application a clean start.
   private readonly handleReset = (): void => {
-    this.setState({ hasError: false });
+    window.location.reload();
   };
 
   override render(): ReactNode {

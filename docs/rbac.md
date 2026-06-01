@@ -126,3 +126,16 @@ Request → authMiddleware (JWT verify → req.auth)
         → Mongoose query with scope filter applied
         → Only authorized data returned
 ```
+
+---
+
+## Addendum — Claude Code Context Files
+
+For detailed RBAC reference material used by Claude Code agents, see:
+
+- `.context/rbac-scope-model.md` — Complete scope model with JWT payload shape, `AuthContext` type, `requireRole` pattern, scope filter code patterns, and per-endpoint RBAC matrix.
+- `docs/AI_RAG_SAFETY.md` — AI retrieval scope safety guide with visibility rules and chunk metadata schema.
+- `.claude/rules/03-rbac-and-scope-safety.md` — Non-negotiable RBAC rules enforced in all code changes.
+- `.claude/skills/rbac-scope-audit/SKILL.md` — Procedure for auditing all routes and services for RBAC compliance.
+
+These files are automatically loaded by the `backend-auth-rbac-agent` and `security-threat-model-agent` before any auth or scope-related work.

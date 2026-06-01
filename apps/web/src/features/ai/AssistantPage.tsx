@@ -264,16 +264,22 @@ function AssistantMarkdown({ content }: { content: string }): JSX.Element {
           h3: ({ children }) => <h3 className="mb-2 text-sm font-semibold">{children}</h3>,
           strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
           em: ({ children }) => <em className="italic">{children}</em>,
-          a: ({ children, href }) => (
-            <a
-              href={href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-sky-600 underline hover:text-sky-700 dark:text-sky-400"
-            >
-              {children}
-            </a>
-          ),
+          a: ({ children, href }) => {
+            // BUG-MEDIUM-19: sanitize href from LLM output — only allow http/https
+            // to prevent javascript: URI XSS attacks.
+            const safeHref =
+              typeof href === 'string' && /^https?:\/\//i.test(href) ? href : undefined;
+            return (
+              <a
+                href={safeHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sky-600 underline hover:text-sky-700 dark:text-sky-400"
+              >
+                {children}
+              </a>
+            );
+          },
           code: ({ children }) => (
             <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-xs text-slate-800 dark:bg-slate-800 dark:text-slate-100">
               {children}

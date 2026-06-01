@@ -8,6 +8,7 @@ import type {
   MeResponseDto,
   UserResponseDto,
 } from '@orgflow/shared-types';
+import { useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { apiClient } from '../../lib/api-client.js';
@@ -87,7 +88,9 @@ export function useCompleteInvite(): ReturnType<
 
 export function useLogout(): () => Promise<void> {
   const qc = useQueryClient();
-  return async () => {
+  // BUG-LOW-22: memoize the returned function so components using it as a prop
+  // or useEffect dependency don't re-run on every render.
+  return useCallback(async () => {
     // H-019: cancel any in-flight queries before clearing the cache so they
     // cannot write post-logout data back into a new session. Remove the
     // Authorization header from the shared axios instance so requests made
@@ -97,5 +100,5 @@ export function useLogout(): () => Promise<void> {
     authStorage.clear();
     delete apiClient.defaults.headers.common.Authorization;
     toast.success('Logged out');
-  };
+  }, [qc]);
 }

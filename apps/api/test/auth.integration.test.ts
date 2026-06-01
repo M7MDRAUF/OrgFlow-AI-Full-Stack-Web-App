@@ -6,6 +6,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app/app.js';
 import { loadEnv } from '../src/app/env.js';
 import { signAuthToken } from '../src/middleware/auth.middleware.js';
+import { OrganizationModel } from '../src/modules/organizations/organization.model.js';
 import { UserModel } from '../src/modules/users/user.model.js';
 import './setup-db.js';
 
@@ -13,10 +14,14 @@ const env = loadEnv();
 const app = createApp(env);
 
 const TEST_ORG_ID = new Types.ObjectId();
+const ADMIN_ID = new Types.ObjectId();
+const ORG_SLUG = 'test-auth-org';
 
 beforeAll(async () => {
+  await OrganizationModel.create({ _id: TEST_ORG_ID, name: 'Test Auth Org', slug: ORG_SLUG });
   const passwordHash = await bcrypt.hash('correct-horse-12', 10);
   await UserModel.create({
+    _id: ADMIN_ID,
     organizationId: TEST_ORG_ID,
     teamId: null,
     email: 'admin@example.com',
@@ -32,9 +37,11 @@ beforeAll(async () => {
 
 describe('POST /api/v1/auth/login', () => {
   it('returns a token for valid credentials', async () => {
-    const res = await request(app)
-      .post('/api/v1/auth/login')
-      .send({ email: 'admin@example.com', password: 'correct-horse-12' });
+    const res = await request(app).post('/api/v1/auth/login').send({
+      email: 'admin@example.com',
+      password: 'correct-horse-12',
+      organizationSlug: ORG_SLUG,
+    });
     expect(res.status).toBe(200);
     const body = res.body as {
       success: boolean;
@@ -49,7 +56,7 @@ describe('POST /api/v1/auth/login', () => {
   it('rejects invalid password', async () => {
     const res = await request(app)
       .post('/api/v1/auth/login')
-      .send({ email: 'admin@example.com', password: 'wrong-but-long' });
+      .send({ email: 'admin@example.com', password: 'wrong-but-long', organizationSlug: ORG_SLUG });
     expect(res.status).toBe(401);
     const body = res.body as { success: boolean; error: { code: string } };
     expect(body.success).toBe(false);
@@ -57,9 +64,11 @@ describe('POST /api/v1/auth/login', () => {
   });
 
   it('rejects unknown email', async () => {
-    const res = await request(app)
-      .post('/api/v1/auth/login')
-      .send({ email: 'nobody@example.com', password: 'wrong-but-long' });
+    const res = await request(app).post('/api/v1/auth/login').send({
+      email: 'nobody@example.com',
+      password: 'wrong-but-long',
+      organizationSlug: ORG_SLUG,
+    });
     expect(res.status).toBe(401);
   });
 
@@ -73,7 +82,7 @@ describe('POST /api/v1/auth/login', () => {
   it('rejects short password at the boundary (BE-C-001)', async () => {
     const res = await request(app)
       .post('/api/v1/auth/login')
-      .send({ email: 'admin@example.com', password: 'short' });
+      .send({ email: 'admin@example.com', password: 'short', organizationSlug: ORG_SLUG });
     expect(res.status).toBe(400);
     const body = res.body as { error: { code: string } };
     expect(body.error.code).toBe('VALIDATION_ERROR');
@@ -84,8 +93,9 @@ describe('POST /api/v1/auth/logout', () => {
   let token: string;
 
   beforeAll(() => {
+    // HIGH-1: auth middleware now does a DB lookup, so use the real ADMIN_ID.
     token = signAuthToken({
-      sub: new Types.ObjectId().toString(),
+      sub: ADMIN_ID.toString(),
       organizationId: TEST_ORG_ID.toString(),
       teamId: null,
       role: 'admin',

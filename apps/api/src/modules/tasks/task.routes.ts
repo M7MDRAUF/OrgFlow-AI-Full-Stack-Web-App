@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authMiddleware } from '../../middleware/auth.middleware.js';
+import { requireRole } from '../../middleware/role.middleware.js';
 import { validate } from '../../middleware/validate.middleware.js';
 import { asyncHandler } from '../../utils/async-handler.js';
 import {
@@ -90,7 +91,12 @@ export function createTasksRouter(): Router {
    *       201:
    *         description: Created task
    */
-  router.post('/', validate({ body: createTaskSchema }), asyncHandler(createTaskHandler));
+  router.post(
+    '/',
+    requireRole('leader'),
+    validate({ body: createTaskSchema }),
+    asyncHandler(createTaskHandler),
+  );
   /**
    * @openapi
    * /tasks/{id}:
@@ -120,7 +126,12 @@ export function createTasksRouter(): Router {
    *       404:
    *         description: Task not found
    */
-  router.patch('/:id', validate({ body: updateTaskSchema }), asyncHandler(updateTaskHandler));
+  router.patch(
+    '/:id',
+    requireRole('member'),
+    validate({ body: updateTaskSchema }),
+    asyncHandler(updateTaskHandler),
+  );
   /**
    * @openapi
    * /tasks/{id}/status:
@@ -149,6 +160,7 @@ export function createTasksRouter(): Router {
    */
   router.patch(
     '/:id/status',
+    requireRole('member'),
     validate({ body: updateTaskStatusSchema }),
     asyncHandler(updateTaskStatusHandler),
   );
@@ -169,7 +181,7 @@ export function createTasksRouter(): Router {
    *       404:
    *         description: Task not found
    */
-  router.delete('/:id', asyncHandler(deleteTaskHandler));
+  router.delete('/:id', requireRole('leader'), asyncHandler(deleteTaskHandler));
   /**
    * @openapi
    * /tasks/{id}/comments:
@@ -216,6 +228,7 @@ export function createTasksRouter(): Router {
    */
   router.post(
     '/:id/comments',
+    requireRole('member'),
     validate({ body: createCommentSchema }),
     asyncHandler(createCommentHandler),
   );

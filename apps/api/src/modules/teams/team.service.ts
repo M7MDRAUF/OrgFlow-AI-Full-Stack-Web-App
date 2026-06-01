@@ -5,6 +5,7 @@ import type { AuthContext } from '../../middleware/auth-context.js';
 import { logAudit } from '../../utils/audit.js';
 import { errors } from '../../utils/errors.js';
 import { toSkipLimit, type Pagination } from '../../utils/pagination.js';
+import { AnnouncementModel } from '../announcements/announcement.model.js';
 import { ProjectModel } from '../projects/project.model.js';
 import { UserModel } from '../users/user.model.js';
 import { TeamModel, type TeamHydrated } from './team.model.js';
@@ -57,7 +58,7 @@ export async function listTeams(
   // BUG-009: Batch member counts in a single aggregation instead of N+1 queries.
   const teamIds = teams.map((t) => t._id);
   const countAgg = await UserModel.aggregate<{ _id: Types.ObjectId; count: number }>([
-    { $match: { teamId: { $in: teamIds } } },
+    { $match: { teamId: { $in: teamIds }, organizationId: orgId } },
     { $group: { _id: '$teamId', count: { $sum: 1 } } },
   ]);
   const countMap = new Map(countAgg.map((c) => [c._id.toString(), c.count]));
@@ -72,7 +73,8 @@ export async function getTeam(auth: AuthContext, id: string): Promise<TeamRespon
     organizationId: orgId,
   });
   if (!team) throw errors.notFound('Team not found');
-  const memberCount = await UserModel.countDocuments({ teamId: team._id });
+  // BUG-LOW-11: include organizationId in the member count query.
+  const memberCount = await UserModel.countDocuments({ teamId: team._id, organizationId: orgId });
   return toTeamResponseDto(team, memberCount);
 }
 
@@ -100,7 +102,8 @@ export async function createTeam(
     resourceId: team.id as string,
     meta: { teamId: team.id as string, teamName: team.name },
   });
-  const memberCount = await UserModel.countDocuments({ teamId: team._id });
+  // BUG-LOW-11: include organizationId in the member count query.
+  const memberCount = await UserModel.countDocuments({ teamId: team._id, organizationId: orgId });
   return toTeamResponseDto(team, memberCount);
 }
 
@@ -132,7 +135,8 @@ export async function updateTeam(
     resourceId: team.id as string,
     meta: { teamId: team.id as string },
   });
-  const memberCount = await UserModel.countDocuments({ teamId: team._id });
+  // BUG-LOW-11: include organizationId in the member count query.
+  const memberCount = await UserModel.countDocuments({ teamId: team._id, organizationId: orgId });
   return toTeamResponseDto(team, memberCount);
 }
 
@@ -156,6 +160,13 @@ export async function deleteTeam(auth: AuthContext, id: string): Promise<void> {
   }
 
   await team.deleteOne();
+  // BUG-LOW-14: cascade-delete announcements that target this team so they
+  // don't remain as orphaned documents after the team is gone.
+  await AnnouncementModel.deleteMany({
+    organizationId: orgId,
+    targetType: 'team',
+    targetId: teamObjId,
+  });
   logAudit(auth, {
     action: 'team.delete',
     resourceId: team.id as string,

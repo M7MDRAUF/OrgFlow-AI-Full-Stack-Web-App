@@ -32,7 +32,11 @@ export function createApp(env: AppEnv): Express {
           cb(null, true);
           return;
         }
-        cb(new Error(`CORS: origin ${origin} not allowed`));
+        // BUG-MEDIUM-20: pass `null` (not an Error) to signal rejection.
+        // Passing a non-null Error causes the cors middleware to call next(err)
+        // which propagates to the error handler and returns 500. Passing null
+        // with `false` causes cors to return a proper 403 CORS rejection.
+        cb(null, false);
       },
       credentials: true,
     }),
@@ -40,7 +44,20 @@ export function createApp(env: AppEnv): Express {
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: true }));
   if (env.NODE_ENV !== 'test') {
-    app.use(morgan(env.NODE_ENV === 'development' ? 'dev' : 'combined'));
+    if (env.NODE_ENV === 'development') {
+      app.use(morgan('dev'));
+    } else {
+      // BUG-LOW-26: use a custom token that strips the query string from the
+      // logged URL so sensitive values in query params are not captured by
+      // access logs. The 'combined' format logs the full :url token which
+      // includes query strings (e.g. ?token=..., ?search=...).
+      morgan.token('path-only', (req: Request) => req.path);
+      app.use(
+        morgan(
+          ':remote-addr - :remote-user [:date[clf]] ":method :path-only HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent"',
+        ),
+      );
+    }
   }
 
   app.get('/health', (_req: Request, res: Response) => {

@@ -155,6 +155,17 @@ export async function createProject(
     status: input.status ?? 'planned',
     startDate: input.startDate !== undefined ? new Date(input.startDate) : null,
     dueDate: input.dueDate !== undefined ? new Date(input.dueDate) : null,
+  }).catch((err: unknown) => {
+    // BUG-LOW-13: handle unique index violation on (organizationId, teamId, title).
+    if (
+      err !== null &&
+      typeof err === 'object' &&
+      'code' in err &&
+      (err as { code: unknown }).code === 11000
+    ) {
+      throw errors.conflict('A project with this title already exists in the team');
+    }
+    throw err;
   });
   logAudit(auth, {
     action: 'project.create',

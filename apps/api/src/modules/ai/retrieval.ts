@@ -78,12 +78,21 @@ async function buildScopeFilter(
   // Role-based chunk access: allowedRoles empty → any role; otherwise must contain auth.role.
   // $size is NOT supported inside Atlas $vectorSearch pre-filter, so we keep
   // the role clause separate and apply it as a post-$match in the vector path.
+  // MEDIUM-10: also persist minRoleRank (numeric) for the $vectorSearch pre-filter so
+  // admin-only chunks never enter the candidate pool for lower-privileged callers.
+  // This reduces the probability of legitimate chunks being displaced by unauthorized ones.
+  const roleRankOf: Record<string, number> = { member: 0, leader: 1, admin: 2 };
+  const callerRank = roleRankOf[auth.role] ?? 0;
   const roleClause: Record<string, unknown> = {
     $or: [{ allowedRoles: { $size: 0 } }, { allowedRoles: auth.role }],
   };
 
   if (scope.teamId !== undefined) filter['teamId'] = new Types.ObjectId(scope.teamId);
   if (scope.projectId !== undefined) filter['projectId'] = new Types.ObjectId(scope.projectId);
+  // MEDIUM-10: include minRoleRank in the pre-filter so Atlas $vectorSearch excludes
+  // admin-only chunks before scoring begins. The post-filter (roleClause) is kept
+  // as a second check for defence-in-depth against legacy chunks without minRoleRank.
+  filter['minRoleRank'] = { $lte: callerRank };
   return { filter, roleClause };
 }
 
@@ -120,8 +129,9 @@ export async function retrieveChunks(
             index: 'chunk_vector_index',
             path: 'embedding',
             queryVector: queryEmbedding,
-            numCandidates: Math.max(topK * 20, topK * multiplier * 4),
-            limit: topK * multiplier,
+            // BUG-LOW-17: cap numCandidates at 150 (Rule-10) and limit at 20 per channel.
+            numCandidates: Math.min(Math.max(topK * 20, topK * multiplier * 4), 150),
+            limit: Math.min(topK * multiplier, 20),
             filter,
           },
         },
@@ -152,7 +162,8 @@ export async function retrieveChunks(
       const logger = getLogger(env);
       logger.error({ err }, '$vectorSearch aggregation failed, falling back to cosine similarity');
       const devFilter: Record<string, unknown> = { $and: [filter, roleClause] };
-      const chunks: DocumentChunkHydrated[] = await DocumentChunkModel.find(devFilter).limit(500);
+      // BUG-LOW-16: reduce from 500 to 100 to bound memory usage (Rule-10).
+      const chunks: DocumentChunkHydrated[] = await DocumentChunkModel.find(devFilter).limit(100);
       const scored = chunks.map((c) => ({
         chunk: c,
         score: cosineSimilarity(queryEmbedding, c.embedding),
