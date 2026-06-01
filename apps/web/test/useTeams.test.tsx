@@ -59,7 +59,7 @@ describe('useTeams', () => {
     expect(result.current.data).toEqual([sampleTeam]);
     expect(mockedGet).toHaveBeenCalledWith(
       '/teams',
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) as unknown }),
     );
   });
 });

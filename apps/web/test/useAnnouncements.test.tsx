@@ -83,7 +83,7 @@ describe('useUnreadAnnouncementCount', () => {
     expect(result.current.data).toBe(3);
     expect(mockedGet).toHaveBeenCalledWith(
       '/announcements/unread-count',
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) as unknown }),
     );
   });
 });

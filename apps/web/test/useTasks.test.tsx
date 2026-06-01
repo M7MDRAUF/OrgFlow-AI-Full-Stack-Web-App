@@ -83,7 +83,7 @@ describe('useTasks', () => {
           params: expect.objectContaining({
             projectId: 'p1',
             status: 'todo',
-          }),
+          }) as unknown,
         }),
       ),
     );

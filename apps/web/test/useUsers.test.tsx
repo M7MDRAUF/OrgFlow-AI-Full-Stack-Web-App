@@ -77,7 +77,7 @@ describe('useUsers', () => {
       expect(mockedGet).toHaveBeenCalledWith(
         '/users',
         expect.objectContaining({
-          params: expect.objectContaining({ role: 'admin' }),
+          params: expect.objectContaining({ role: 'admin' }) as unknown,
         }),
       ),
     );
