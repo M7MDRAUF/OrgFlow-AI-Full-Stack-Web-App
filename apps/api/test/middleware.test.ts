@@ -16,7 +16,7 @@ function fakeRes(): Response {
 // ======================== requireRole ========================
 describe('requireRole middleware', () => {
   it('passes when role meets minimum', () => {
-    const next = vi.fn<NextFunction>();
+    const next = vi.fn() as unknown as NextFunction;
     const req = fakeReq({
       auth: { userId: '1', organizationId: '1', teamId: null, role: 'admin' },
     });
@@ -25,7 +25,7 @@ describe('requireRole middleware', () => {
   });
 
   it('rejects when role is below minimum', () => {
-    const next = vi.fn<NextFunction>();
+    const next = vi.fn() as unknown as NextFunction;
     const req = fakeReq({
       auth: { userId: '1', organizationId: '1', teamId: null, role: 'member' },
     });
@@ -34,8 +34,8 @@ describe('requireRole middleware', () => {
   });
 
   it('rejects when auth is missing', () => {
-    const next = vi.fn<NextFunction>();
-    const req = fakeReq({ auth: undefined });
+    const next = vi.fn() as unknown as NextFunction;
+    const req = fakeReq();
     requireRole('member')(req, fakeRes(), next);
     expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 401 }));
   });
@@ -49,7 +49,7 @@ describe('validate middleware', () => {
   });
 
   it('passes valid body and replaces req.body with parsed data', () => {
-    const next = vi.fn<NextFunction>();
+    const next = vi.fn() as unknown as NextFunction;
     const req = fakeReq({ body: { name: 'Alice', age: 30 } });
     validate({ body: schema })(req, fakeRes(), next);
     expect(next).toHaveBeenCalledWith();
@@ -57,7 +57,7 @@ describe('validate middleware', () => {
   });
 
   it('rejects invalid body', () => {
-    const next = vi.fn<NextFunction>();
+    const next = vi.fn() as unknown as NextFunction;
     const req = fakeReq({ body: { name: '', age: -1 } });
     validate({ body: schema })(req, fakeRes(), next);
     expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 400 }));
@@ -65,7 +65,7 @@ describe('validate middleware', () => {
 
   it('validates query params', () => {
     const qSchema = z.object({ page: z.coerce.number().int().positive().default(1) });
-    const next = vi.fn<NextFunction>();
+    const next = vi.fn() as unknown as NextFunction;
     const req = fakeReq({ query: { page: '5' } as unknown as Request['query'] });
     validate({ query: qSchema })(req, fakeRes(), next);
     expect(next).toHaveBeenCalledWith();
@@ -73,7 +73,7 @@ describe('validate middleware', () => {
 
   it('rejects invalid query params', () => {
     const qSchema = z.object({ limit: z.coerce.number().int().positive() });
-    const next = vi.fn<NextFunction>();
+    const next = vi.fn() as unknown as NextFunction;
     const req = fakeReq({ query: { limit: 'abc' } as unknown as Request['query'] });
     validate({ query: qSchema })(req, fakeRes(), next);
     expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 400 }));
@@ -82,7 +82,7 @@ describe('validate middleware', () => {
   it('strips unexpected properties from query and params', () => {
     const qSchema = z.object({ limit: z.coerce.number().int().positive() });
     const pSchema = z.object({ id: z.string().min(1) });
-    const next = vi.fn<NextFunction>();
+    const next = vi.fn() as unknown as NextFunction;
     const req = fakeReq({
       query: { limit: '10', unexpectedQuery: 'malicious' } as unknown as Request['query'],
       params: { id: 'some-id', unexpectedParam: 'ignored' } as unknown as Request['params'],
