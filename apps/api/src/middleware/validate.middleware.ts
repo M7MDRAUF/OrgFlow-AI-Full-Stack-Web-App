@@ -23,8 +23,8 @@ export function validate(schemas: Schemas) {
         const paginationParsed = paginationSchema.safeParse(req.query);
         const paginationData: Record<string, unknown> = {};
         if (paginationParsed.success) {
-          if ('page' in req.query) paginationData.page = paginationParsed.data.page;
-          if ('pageSize' in req.query) paginationData.pageSize = paginationParsed.data.pageSize;
+          if ('page' in req.query) paginationData['page'] = paginationParsed.data.page;
+          if ('pageSize' in req.query) paginationData['pageSize'] = paginationParsed.data.pageSize;
         }
         for (const key of Object.keys(req.query)) {
           Reflect.deleteProperty(req.query, key);
