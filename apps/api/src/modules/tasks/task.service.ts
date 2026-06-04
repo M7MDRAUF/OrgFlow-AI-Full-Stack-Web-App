@@ -4,6 +4,7 @@ import type { TaskCommentResponseDto, TaskResponseDto } from '@orgflow/shared-ty
 import { Types, type FilterQuery } from 'mongoose';
 import type { AuthContext } from '../../middleware/auth-context.js';
 import { logAudit } from '../../utils/audit.js';
+import { assertObjectId } from '../../utils/object-id.js';
 import { errors } from '../../utils/errors.js';
 import { toSkipLimit, type Pagination } from '../../utils/pagination.js';
 import { ProjectModel } from '../projects/project.model.js';
@@ -21,11 +22,6 @@ import type {
   UpdateTaskInput,
   UpdateTaskStatusInput,
 } from './task.schema.js';
-
-function assertObjectId(id: string, label: string): Types.ObjectId {
-  if (!Types.ObjectId.isValid(id)) throw errors.validation(`Invalid ${label}`);
-  return new Types.ObjectId(id);
-}
 
 function isOverdue(doc: TaskHydrated): boolean {
   if (doc.status === 'done') return false;
@@ -155,7 +151,7 @@ export async function listTasks(
     _id: Types.ObjectId;
     count: number;
   }>([
-    { $match: { taskId: { $in: taskIds } } },
+    { $match: { taskId: { $in: taskIds }, organizationId: orgId } },
     { $group: { _id: '$taskId', count: { $sum: 1 } } },
   ]);
   const countMap = new Map(commentCounts.map((c) => [c._id.toString(), c.count]));
@@ -184,7 +180,10 @@ async function loadTaskForAuth(auth: AuthContext, id: string): Promise<TaskHydra
 
 export async function getTask(auth: AuthContext, id: string): Promise<TaskResponseDto> {
   const doc = await loadTaskForAuth(auth, id);
-  const commentCount = await TaskCommentModel.countDocuments({ taskId: doc._id });
+  const commentCount = await TaskCommentModel.countDocuments({
+    taskId: doc._id,
+    organizationId: doc.organizationId,
+  });
   return toDto(doc, commentCount);
 }
 
@@ -237,8 +236,10 @@ export async function updateTask(
 
   // members may only transition status on their own task.
   if (auth.role === 'member') {
-    const onlyStatus = Object.keys(input).length === 1 && input.status !== undefined;
-    if (!onlyStatus) throw errors.forbidden('Members may only change status');
+    const memberFields = Object.keys(input);
+    if (memberFields.length !== 1 || memberFields[0] !== 'status') {
+      throw errors.forbidden('Members may only change status');
+    }
   }
 
   if (input.title !== undefined) doc.title = input.title;
@@ -264,7 +265,10 @@ export async function updateTask(
     }
   }
   await doc.save();
-  const commentCount = await TaskCommentModel.countDocuments({ taskId: doc._id });
+  const commentCount = await TaskCommentModel.countDocuments({
+    taskId: doc._id,
+    organizationId: doc.organizationId,
+  });
   logAudit(auth, {
     action: 'task.update',
     resourceId: doc.id as string,
@@ -287,15 +291,7 @@ export async function deleteTask(auth: AuthContext, id: string): Promise<void> {
   // DA-006: Delete comments before the task so if comment deletion fails,
   // the task still exists and can be retried. Previous order left orphaned
   // comments if comment deletion failed after task was already deleted.
-  // BUG-LOW-10: these two operations are non-atomic (no Mongoose session).
-  // MongoDB multi-document transactions require a replica set; since the
-  // deployment/test environment uses a standalone instance, a session-based
-  // transaction cannot be added without an infra change. The current deletion
-  // order (comments → task) is the safest sequential option: if deleteMany
-  // fails, the task is untouched and the client can retry; if deleteOne fails
-  // after deleteMany, orphaned comments are a minor data inconsistency. Track
-  // as a known limitation to resolve when a replica-set deployment is in place.
-  await TaskCommentModel.deleteMany({ taskId: doc._id });
+  await TaskCommentModel.deleteMany({ taskId: doc._id, organizationId: doc.organizationId });
   await doc.deleteOne();
   logAudit(auth, {
     action: 'task.delete',
@@ -313,7 +309,10 @@ export async function updateTaskStatus(
   if (!canMutateTask(auth, doc)) throw errors.forbidden('Cannot modify this task');
   doc.status = input.status;
   await doc.save();
-  const commentCount = await TaskCommentModel.countDocuments({ taskId: doc._id });
+  const commentCount = await TaskCommentModel.countDocuments({
+    taskId: doc._id,
+    organizationId: doc.organizationId,
+  });
   return toDto(doc, commentCount);
 }
 
@@ -322,12 +321,10 @@ export async function listComments(
   taskId: string,
 ): Promise<TaskCommentResponseDto[]> {
   const doc = await loadTaskForAuth(auth, taskId);
-  // BUG-MEDIUM-21: apply a hard limit to prevent unbounded comment payloads.
-  // 200 comments covers all practical use cases. Full pagination can be added
-  // later; a hard cap is the minimal-risk fix that satisfies Rule 10.
-  const comments = await TaskCommentModel.find({ taskId: doc._id })
-    .sort({ createdAt: 1 })
-    .limit(200);
+  const comments = await TaskCommentModel.find({
+    taskId: doc._id,
+    organizationId: doc.organizationId,
+  }).sort({ createdAt: 1 });
   return comments.map(toCommentDto);
 }
 
@@ -351,9 +348,8 @@ export async function createComment(
     throw errors.notFound('Task not found');
   }
   const comment = await TaskCommentModel.create({
+    organizationId: doc.organizationId,
     taskId: doc._id,
-    // BUG-LOW-15: store organizationId on the comment document for independent scope filtering.
-    organizationId: new Types.ObjectId(auth.organizationId),
     userId: new Types.ObjectId(auth.userId),
     body: input.body,
   });

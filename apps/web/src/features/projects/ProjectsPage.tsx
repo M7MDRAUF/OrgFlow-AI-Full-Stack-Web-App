@@ -1,4 +1,9 @@
-import { type ProjectResponseDto, type ProjectStatus } from '@orgflow/shared-types';
+import {
+  PROJECT_STATUSES,
+  type ProjectResponseDto,
+  type ProjectStatus,
+} from '@orgflow/shared-types';
+import { z } from 'zod';
 import {
   Badge,
   Button,
@@ -188,7 +193,13 @@ export function ProjectsPage(): JSX.Element {
               options={statusOptions}
               value={statusFilter}
               onChange={(e) => {
-                setStatusFilter(e.target.value as '' | ProjectStatus);
+                const val = e.target.value;
+                if (val === '') {
+                  setStatusFilter('');
+                  return;
+                }
+                const parsed = z.enum(PROJECT_STATUSES).safeParse(val);
+                if (parsed.success) setStatusFilter(parsed.data);
               }}
             />
           </Field>

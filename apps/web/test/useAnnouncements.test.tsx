@@ -83,7 +83,8 @@ describe('useUnreadAnnouncementCount', () => {
     expect(result.current.data).toBe(3);
     expect(mockedGet).toHaveBeenCalledWith(
       '/announcements/unread-count',
-      expect.objectContaining({ signal: expect.any(AbortSignal) as unknown }),
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
   });
 });

@@ -1,8 +1,7 @@
-// rag-chat-agent — HTTP handlers for the assistant chat endpoint.
 import type { Request, Response } from 'express';
 import { errors } from '../../../utils/errors.js';
 import { sendSuccess } from '../../../utils/response.js';
-import type { ChatHistoryQuery, ChatRequestInput } from './chat.schema.js';
+import { chatHistoryQuerySchema, type ChatRequestInput } from './chat.schema.js';
 import * as chatService from './chat.service.js';
 
 function requireAuth(req: Request) {
@@ -16,7 +15,7 @@ export async function askHandler(req: Request, res: Response): Promise<void> {
 }
 
 export async function historyHandler(req: Request, res: Response): Promise<void> {
-  const { cursor, limit } = req.query as unknown as ChatHistoryQuery;
+  const { cursor, limit } = chatHistoryQuerySchema.parse(req.query);
   const result = await chatService.getHistory(requireAuth(req), cursor, limit);
   sendSuccess(res, result);
 }

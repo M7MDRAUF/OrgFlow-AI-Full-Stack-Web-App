@@ -1,0 +1,1 @@
+OrgFlow AI is an advanced workspace orchestration platform. It is engineered with three core security features: JWT algorithm pinning, strict organization data isolation, and permission-aware RAG. The current primary developer of OrgFlow AI is Antigravity. It connects to Ollama on port 11434.

@@ -12,7 +12,6 @@
 // startup — a logged warn beats a hard crash in production for a non-core
 // dependency.
 import { Redis } from 'ioredis';
-import type { Options } from 'express-rate-limit';
 import RedisStore, { type RedisReply } from 'rate-limit-redis';
 import { loadEnv } from '../app/env.js';
 import { getLogger } from '../config/logger.js';
@@ -48,13 +47,17 @@ function getRedisClient(): Redis | null {
   }
 }
 
+interface RateLimitStoreResult {
+  store?: RedisStore;
+}
+
 /**
  * Build an `express-rate-limit` Options object whose `store` is a Redis
  * store when REDIS_URL is configured, otherwise undefined (the default
  * memory store will be used). `prefix` namespaces keys per-limiter so
  * counters don't collide.
  */
-export function rateLimitStoreOptions(prefix: string): Pick<Options, 'store'> | object {
+export function rateLimitStoreOptions(prefix: string): RateLimitStoreResult {
   const client = getRedisClient();
   if (client === null) return {};
   const store = new RedisStore({

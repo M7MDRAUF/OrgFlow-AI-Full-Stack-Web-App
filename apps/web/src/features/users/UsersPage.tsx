@@ -1,4 +1,11 @@
-import type { UserResponseDto, UserRole, UserStatus } from '@orgflow/shared-types';
+import {
+  USER_ROLES,
+  USER_STATUSES,
+  type UserResponseDto,
+  type UserRole,
+  type UserStatus,
+} from '@orgflow/shared-types';
+import { z } from 'zod';
 import {
   Badge,
   Button,
@@ -138,7 +145,13 @@ export function UsersPage(): JSX.Element {
               options={roleOptions}
               value={roleFilter}
               onChange={(e) => {
-                setRoleFilter(e.target.value as '' | UserRole);
+                const val = e.target.value;
+                if (val === '') {
+                  setRoleFilter('');
+                  return;
+                }
+                const parsed = z.enum(USER_ROLES).safeParse(val);
+                if (parsed.success) setRoleFilter(parsed.data);
               }}
             />
           </Field>
@@ -148,7 +161,13 @@ export function UsersPage(): JSX.Element {
               options={statusOptions}
               value={statusFilter}
               onChange={(e) => {
-                setStatusFilter(e.target.value as '' | UserStatus);
+                const val = e.target.value;
+                if (val === '') {
+                  setStatusFilter('');
+                  return;
+                }
+                const parsed = z.enum(USER_STATUSES).safeParse(val);
+                if (parsed.success) setStatusFilter(parsed.data);
               }}
             />
           </Field>

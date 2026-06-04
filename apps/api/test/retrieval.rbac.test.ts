@@ -28,6 +28,10 @@ vi.mock('../src/modules/ai/embeddings.js', async (importOriginal) => {
       const dims = getEmbeddingDimensions();
       return Promise.resolve(new Array<number>(dims).fill(0));
     }),
+    embedTextWithStatus: vi.fn(() => {
+      const dims = getEmbeddingDimensions();
+      return Promise.resolve({ vector: new Array<number>(dims).fill(0), degraded: false });
+    }),
   };
 });
 

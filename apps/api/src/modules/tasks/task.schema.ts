@@ -28,9 +28,13 @@ export const listTasksQuerySchema = z.object({
   priority: z.enum(TASK_PRIORITIES).optional(),
   assignedTo: z.string().optional(),
   mine: z
-    .union([z.literal('true'), z.literal('false')])
+    .union([z.literal('true'), z.literal('false'), z.boolean()])
     .optional()
-    .transform((v) => (v !== undefined ? v === 'true' : undefined)),
+    .transform((v) => {
+      if (v === undefined) return undefined;
+      if (typeof v === 'boolean') return v;
+      return v === 'true';
+    }),
 });
 
 export const createCommentSchema = z.object({

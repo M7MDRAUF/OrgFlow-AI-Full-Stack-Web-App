@@ -23,17 +23,15 @@ export function createAuthRouter(): Router {
   // F-007: narrow rate-limit for unauthenticated + credential-bearing
   // endpoints to slow down brute-force and token-enumeration attempts.
   const isTest = loadEnv().NODE_ENV === 'test';
-  // BUG-MEDIUM-1: rate-limit window corrected to 15 minutes (900_000 ms)
-  // — 1-minute window was far too short to slow brute-force attempts.
   const loginLimiter = rateLimit({
-    windowMs: 900_000,
+    windowMs: 60_000,
     limit: isTest ? 1_000 : 10,
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     ...rateLimitStoreOptions('auth-login'),
   });
   const inviteLimiter = rateLimit({
-    windowMs: 900_000,
+    windowMs: 60_000,
     limit: isTest ? 1_000 : 20,
     standardHeaders: 'draft-7',
     legacyHeaders: false,

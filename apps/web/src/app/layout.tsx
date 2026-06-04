@@ -67,7 +67,7 @@ const navItems: NavItem[] = [
     to: '/knowledge',
     label: 'Knowledge',
     icon: <BookOpen size={16} />,
-    roles: ['admin'],
+    roles: ['admin', 'leader'],
   },
 ];
 

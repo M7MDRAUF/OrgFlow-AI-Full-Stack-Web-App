@@ -49,7 +49,10 @@ function ButtonImpl(props: ButtonProps, ref: ForwardedRef<HTMLButtonElement>): J
       )}
       {...rest}
     >
-      {loading ? <span className="animate-pulse">Loading…</span> : children}
+      {loading && (
+        <span className="mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+      )}
+      {children}
     </button>
   );
 }

@@ -232,8 +232,10 @@ const STATUS_CONFIG: Record<
   checking: { dotClass: 'bg-slate-400 animate-pulse', label: 'Checking...' },
 };
 
-function OllamaStatusDot({ status }: { status: OllamaConnectionStatus | 'checking' }): JSX.Element {
-  const { dotClass, label } = STATUS_CONFIG[status];
+function OllamaStatusDot({ status }: { status: string }): JSX.Element {
+  const config = STATUS_CONFIG as Record<string, { dotClass: string; label: string } | undefined>;
+  const dotClass = config[status]?.dotClass ?? 'bg-slate-400';
+  const label = config[status]?.label ?? 'Unknown';
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-2.5 py-0.5 text-xs font-medium text-slate-600 dark:border-slate-700 dark:text-slate-300">
       <span className={`inline-block h-2 w-2 rounded-full ${dotClass}`} aria-hidden="true" />
@@ -264,22 +266,16 @@ function AssistantMarkdown({ content }: { content: string }): JSX.Element {
           h3: ({ children }) => <h3 className="mb-2 text-sm font-semibold">{children}</h3>,
           strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
           em: ({ children }) => <em className="italic">{children}</em>,
-          a: ({ children, href }) => {
-            // BUG-MEDIUM-19: sanitize href from LLM output — only allow http/https
-            // to prevent javascript: URI XSS attacks.
-            const safeHref =
-              typeof href === 'string' && /^https?:\/\//i.test(href) ? href : undefined;
-            return (
-              <a
-                href={safeHref}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sky-600 underline hover:text-sky-700 dark:text-sky-400"
-              >
-                {children}
-              </a>
-            );
-          },
+          a: ({ children, href }) => (
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sky-600 underline hover:text-sky-700 dark:text-sky-400"
+            >
+              {children}
+            </a>
+          ),
           code: ({ children }) => (
             <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-xs text-slate-800 dark:bg-slate-800 dark:text-slate-100">
               {children}

@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 // Body bounds tightened from min(1)/max(10_000) per BE-M-005: enforce a
 // readable minimum and a reasonable ceiling aligned with §2.8 FR guidance.
-const announcementBody = z.string().min(10).max(2000).trim();
+const announcementBody = z.string().min(1).max(2000).trim();
 
 export const createAnnouncementSchema = z.object({
   targetType: z.enum(ANNOUNCEMENT_TARGET_TYPES),
@@ -19,9 +19,13 @@ export const updateAnnouncementSchema = z.object({
 
 export const listAnnouncementsQuerySchema = z.object({
   unreadOnly: z
-    .union([z.literal('true'), z.literal('false')])
+    .union([z.literal('true'), z.literal('false'), z.boolean()])
     .optional()
-    .transform((v) => (v !== undefined ? v === 'true' : undefined)),
+    .transform((v) => {
+      if (v === undefined) return undefined;
+      if (typeof v === 'boolean') return v;
+      return v === 'true';
+    }),
 });
 
 export type CreateAnnouncementInput = z.infer<typeof createAnnouncementSchema>;

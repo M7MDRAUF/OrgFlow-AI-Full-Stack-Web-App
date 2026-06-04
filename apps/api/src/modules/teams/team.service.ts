@@ -3,20 +3,14 @@ import type { TeamResponseDto } from '@orgflow/shared-types';
 import { Types } from 'mongoose';
 import type { AuthContext } from '../../middleware/auth-context.js';
 import { logAudit } from '../../utils/audit.js';
+import { assertObjectId } from '../../utils/object-id.js';
 import { errors } from '../../utils/errors.js';
 import { toSkipLimit, type Pagination } from '../../utils/pagination.js';
-import { AnnouncementModel } from '../announcements/announcement.model.js';
 import { ProjectModel } from '../projects/project.model.js';
+import { TaskModel } from '../tasks/task.model.js';
 import { UserModel } from '../users/user.model.js';
 import { TeamModel, type TeamHydrated } from './team.model.js';
 import type { CreateTeamInput, UpdateTeamInput } from './team.schema.js';
-
-function assertObjectId(id: string, label: string): Types.ObjectId {
-  if (!Types.ObjectId.isValid(id)) {
-    throw errors.validation(`Invalid ${label}`);
-  }
-  return new Types.ObjectId(id);
-}
 
 function toTeamResponseDto(team: TeamHydrated, memberCount: number): TeamResponseDto {
   return {
@@ -58,7 +52,7 @@ export async function listTeams(
   // BUG-009: Batch member counts in a single aggregation instead of N+1 queries.
   const teamIds = teams.map((t) => t._id);
   const countAgg = await UserModel.aggregate<{ _id: Types.ObjectId; count: number }>([
-    { $match: { teamId: { $in: teamIds }, organizationId: orgId } },
+    { $match: { teamId: { $in: teamIds } } },
     { $group: { _id: '$teamId', count: { $sum: 1 } } },
   ]);
   const countMap = new Map(countAgg.map((c) => [c._id.toString(), c.count]));
@@ -73,8 +67,7 @@ export async function getTeam(auth: AuthContext, id: string): Promise<TeamRespon
     organizationId: orgId,
   });
   if (!team) throw errors.notFound('Team not found');
-  // BUG-LOW-11: include organizationId in the member count query.
-  const memberCount = await UserModel.countDocuments({ teamId: team._id, organizationId: orgId });
+  const memberCount = await UserModel.countDocuments({ teamId: team._id });
   return toTeamResponseDto(team, memberCount);
 }
 
@@ -102,8 +95,7 @@ export async function createTeam(
     resourceId: team.id as string,
     meta: { teamId: team.id as string, teamName: team.name },
   });
-  // BUG-LOW-11: include organizationId in the member count query.
-  const memberCount = await UserModel.countDocuments({ teamId: team._id, organizationId: orgId });
+  const memberCount = await UserModel.countDocuments({ teamId: team._id });
   return toTeamResponseDto(team, memberCount);
 }
 
@@ -135,8 +127,7 @@ export async function updateTeam(
     resourceId: team.id as string,
     meta: { teamId: team.id as string },
   });
-  // BUG-LOW-11: include organizationId in the member count query.
-  const memberCount = await UserModel.countDocuments({ teamId: team._id, organizationId: orgId });
+  const memberCount = await UserModel.countDocuments({ teamId: team._id });
   return toTeamResponseDto(team, memberCount);
 }
 
@@ -149,24 +140,18 @@ export async function deleteTeam(auth: AuthContext, id: string): Promise<void> {
   if (!team) throw errors.notFound('Team not found');
 
   // H-003: reject deletion if the team still has members or projects.
-  const [hasMembers, hasProjects] = await Promise.all([
+  const [hasMembers, hasProjects, hasTasks] = await Promise.all([
     UserModel.exists({ teamId: teamObjId }),
     ProjectModel.exists({ teamId: teamObjId, organizationId: orgId }),
+    TaskModel.exists({ teamId: teamObjId, organizationId: orgId }),
   ]);
-  if (hasMembers !== null || hasProjects !== null) {
+  if (hasMembers !== null || hasProjects !== null || hasTasks !== null) {
     throw errors.validation(
-      'Cannot delete a team that still has members or projects. Reassign them first.',
+      'Cannot delete a team that still has members, projects, or tasks. Reassign them first.',
     );
   }
 
   await team.deleteOne();
-  // BUG-LOW-14: cascade-delete announcements that target this team so they
-  // don't remain as orphaned documents after the team is gone.
-  await AnnouncementModel.deleteMany({
-    organizationId: orgId,
-    targetType: 'team',
-    targetId: teamObjId,
-  });
   logAudit(auth, {
     action: 'team.delete',
     resourceId: team.id as string,

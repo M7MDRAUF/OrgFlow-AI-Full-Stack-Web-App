@@ -8,7 +8,18 @@ dist/
 build/
 .vite/
 *.tsbuildinfo
-
+images/
+scripts/
+# Operating files are now version-controlled:
+# .claude/ (agents, skills, rules, commands)
+# .context/ (project memory, architecture maps)
+# .github/ (CI/CD workflows)
+# docs/ (documentation)
+# CLAUDE.md (root operating guide)
+# AGENTS.md (agent orchestration contract)
+studentos-claude-agents-manifest.json
+studentos-claude-skills-manifest.json
+TEAMMATE_SETUP.md
 # env
 .env
 .env.local
@@ -39,12 +50,7 @@ generate_pptx.cjs
 generate_pptx_v2.cjs
 # temporary QA artifacts
 tmp/
-scripts/
-# agent orchestration contract — IS tracked by git; this entry is a no-op
-# (removing it per BUG-LOW-8: .gitignore only prevents untracked files from
-# being added; AGENTS.md was already committed, so the entry was misleading)
-images/
-Ultra_Expert_TP02_Masters_Report_Prompt.md
+
 # coverage & test output
 coverage/
 .nyc_output/
@@ -111,12 +117,13 @@ test-doc.txt
 # playwright-mcp browser test snapshots/console logs (local QA only)
 .playwright-mcp/
 
-# Claude Code / StudentOS agent orchestration artifacts (local only)
-studentos-claude-agents-manifest.json
-studentos-claude-skills-manifest.json
+# Claude Code and agent orchestration files
 .claude/
 .context/
+.github/
+docs/
+BUGS.md
 CLAUDE.md
 AGENTS.md
-docs/
-.github/
+studentos-claude-agents-manifest.json
+studentos-claude-skills-manifest.json

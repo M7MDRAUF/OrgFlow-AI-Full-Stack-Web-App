@@ -19,6 +19,7 @@ import { Types } from 'mongoose';
 import type { AuthContext } from '../../../middleware/auth-context.js';
 import { listAnnouncements } from '../../announcements/announcement.service.js';
 import { listProjects } from '../../projects/project.service.js';
+import { ProjectModel } from '../../projects/project.model.js';
 import { TaskModel } from '../../tasks/task.model.js';
 import { listTasks } from '../../tasks/task.service.js';
 import { TeamModel } from '../../teams/team.model.js';
@@ -179,11 +180,7 @@ async function projectNameMap(
   const unique = Array.from(new Set(projectIds.filter((id) => Types.ObjectId.isValid(id))));
   if (unique.length === 0) return new Map();
   const objIds = unique.map((id) => new Types.ObjectId(id));
-  // ProjectModel is not imported; re-use listProjects with a large page to
-  // resolve names within the org's project set without bypassing RBAC.
-  // For the name-resolution case we query Mongoose directly via the already-
-  // available ProjectModel import path through the project service model.
-  const { ProjectModel } = await import('../../projects/project.model.js');
+
   const docs = await ProjectModel.find(
     { organizationId, _id: { $in: objIds } },
     { _id: 1, title: 1 },

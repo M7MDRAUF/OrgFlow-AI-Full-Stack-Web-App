@@ -11,9 +11,10 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import type { TaskResponseDto, TaskStatus } from '@orgflow/shared-types';
+import { TASK_STATUSES, type TaskResponseDto, type TaskStatus } from '@orgflow/shared-types';
 import { Badge, Button, Card, EmptyState, ErrorState, Field, Select, Skeleton } from '@orgflow/ui';
 import { useMemo, useState, type JSX } from 'react';
+import { z } from 'zod';
 import { authStorage } from '../auth/storage.js';
 import { useProjects } from '../projects/useProjects.js';
 import { useTasks, useUpdateTask, type ListTasksFilters } from './useTasks.js';
@@ -54,6 +55,14 @@ export function KanbanPage(): JSX.Element {
     for (const task of tasksQuery.data ?? []) {
       groups[task.status].push(task);
     }
+    // Sort each column by priority (high → medium → low) so urgent tasks
+    // surface at the top of every lane.
+    const priorityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
+    for (const status of TASK_STATUSES) {
+      groups[status].sort(
+        (a, b) => (priorityOrder[a.priority] ?? 9) - (priorityOrder[b.priority] ?? 9),
+      );
+    }
     return groups;
   }, [tasksQuery.data]);
 
@@ -68,7 +77,9 @@ export function KanbanPage(): JSX.Element {
   const handleDragEnd = (event: DragEndEvent): void => {
     const { active, over } = event;
     if (over === null) return;
-    const targetStatus = over.id as TaskStatus;
+    const parsed = z.enum(TASK_STATUSES).safeParse(over.id);
+    if (!parsed.success) return;
+    const targetStatus = parsed.data;
     const taskId = String(active.id);
     const task = (tasksQuery.data ?? []).find((t) => t.id === taskId);
     if (!task || task.status === targetStatus) return;

@@ -8,22 +8,6 @@ import { AuthGuard, RoleGuard } from '../src/features/auth/AuthGuard.js';
 import { authStorage, type AuthProfile } from '../src/features/auth/storage.js';
 import { queryClient } from '../src/lib/query-client.js';
 
-/**
- * Build a properly-encoded but unsigned JWT so that isTokenValid() and
- * getRoleFromToken() (which only parse the base64url payload) work correctly
- * in tests. The signature field is left as a placeholder — it is never
- * verified on the frontend.
- */
-function makeTestToken(payload: Record<string, unknown>): string {
-  const toBase64Url = (str: string): string =>
-    btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-  const header = toBase64Url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
-  const body = toBase64Url(JSON.stringify(payload));
-  return `${header}.${body}.test-sig`;
-}
-
-const FAR_FUTURE_EXP = 9_999_999_999; // year 2286
-
 function renderAt(path: string, element: JSX.Element) {
   return render(
     <QueryClientProvider client={queryClient}>
@@ -66,8 +50,7 @@ describe('AuthGuard', () => {
   });
 
   it('allows rendering when a token is present', () => {
-    const validToken = makeTestToken({ sub: 'u1', role: 'member', exp: FAR_FUTURE_EXP });
-    authStorage.set(validToken, memberProfile);
+    authStorage.set('token-xyz', memberProfile);
     renderAt(
       '/protected',
       <AuthGuard>
@@ -79,9 +62,8 @@ describe('AuthGuard', () => {
 });
 
 describe('RoleGuard (FE-L-004 403 page)', () => {
-  const memberToken = makeTestToken({ sub: 'u1', role: 'member', exp: FAR_FUTURE_EXP });
   beforeEach(() => {
-    authStorage.set(memberToken, memberProfile);
+    authStorage.set('tok', memberProfile);
   });
   afterEach(() => {
     authStorage.clear();

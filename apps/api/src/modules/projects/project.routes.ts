@@ -37,7 +37,12 @@ export function createProjectsRouter(): Router {
    *       200:
    *         description: Array of projects
    */
-  router.get('/', validate({ query: listProjectsQuerySchema }), asyncHandler(listProjectsHandler));
+  router.get(
+    '/',
+    requireRole('member'),
+    validate({ query: listProjectsQuerySchema }),
+    asyncHandler(listProjectsHandler),
+  );
   /**
    * @openapi
    * /projects/{id}:
@@ -55,7 +60,7 @@ export function createProjectsRouter(): Router {
    *       404:
    *         description: Project not found
    */
-  router.get('/:id', asyncHandler(getProjectHandler));
+  router.get('/:id', requireRole('member'), asyncHandler(getProjectHandler));
   /**
    * @openapi
    * /projects:

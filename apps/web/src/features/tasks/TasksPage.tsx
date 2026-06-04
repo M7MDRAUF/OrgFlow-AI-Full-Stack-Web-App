@@ -53,7 +53,8 @@ function formatDate(iso: string | null): string {
 
 export function TasksPage(): JSX.Element {
   const profile = authStorage.getProfile();
-  const canCreate = profile?.role === 'admin' || profile?.role === 'leader';
+  const isAdminOrLeader = profile?.role === 'admin' || profile?.role === 'leader';
+  const canCreate = isAdminOrLeader;
 
   const [searchParams, setSearchParams] = useSearchParams();
   const statusFilter = (searchParams.get('status') ?? '') as '' | TaskStatus;
@@ -76,7 +77,7 @@ export function TasksPage(): JSX.Element {
     [setSearchParams],
   );
 
-  const projectsQuery = useProjects();
+  const projectsQuery = useProjects(undefined, { enabled: isAdminOrLeader });
   const usersQuery = useUsers();
 
   const filters = useMemo<ListTasksFilters>(() => {

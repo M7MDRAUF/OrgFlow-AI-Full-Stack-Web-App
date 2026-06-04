@@ -10,7 +10,7 @@ export interface DocumentDoc {
   title: string;
   originalFilename: string;
   mimeType: string;
-  uploadedBy: Types.ObjectId;
+  uploadedBy: Types.ObjectId | null;
   status: DocumentStatus;
   allowedRoles: UserRole[];
   chunkCount: number | null;
@@ -38,7 +38,7 @@ const documentSchema = new Schema<DocumentDoc>(
     title: { type: String, required: true, trim: true },
     originalFilename: { type: String, required: true },
     mimeType: { type: String, required: true },
-    uploadedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    uploadedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     status: {
       type: String,
       enum: ['uploaded', 'parsed', 'indexed', 'failed'],

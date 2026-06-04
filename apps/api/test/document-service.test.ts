@@ -1,7 +1,7 @@
 // rag-ingest-agent — Document service listing and deletion RBAC tests.
 // Tests listDocuments scope filtering and deleteDocument permissions.
 import { Types } from 'mongoose';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthContext } from '../src/middleware/auth-context.js';
 import { DocumentChunkModel } from '../src/modules/ai/documents/document-chunk.model.js';
 import { DocumentModel } from '../src/modules/ai/documents/document.model.js';
@@ -11,6 +11,24 @@ import { ProjectModel } from '../src/modules/projects/project.model.js';
 import { TeamModel } from '../src/modules/teams/team.model.js';
 import { UserModel } from '../src/modules/users/user.model.js';
 import './setup-db.js';
+
+vi.mock('../src/modules/ai/embeddings.js', () => ({
+  embedMany: vi.fn(),
+}));
+vi.mock('../src/modules/ai/documents/chunker.js', () => ({
+  chunkText: vi.fn(),
+}));
+vi.mock('../src/modules/ai/documents/parser.js', () => ({
+  extractText: vi.fn(),
+}));
+vi.mock('../src/modules/ai/documents/mime-detect.js', () => ({
+  assertMimeMatchesMagic: vi.fn(),
+}));
+
+import { embedMany } from '../src/modules/ai/embeddings.js';
+import { chunkText } from '../src/modules/ai/documents/chunker.js';
+import { extractText } from '../src/modules/ai/documents/parser.js';
+import { assertMimeMatchesMagic } from '../src/modules/ai/documents/mime-detect.js';
 
 const PG = { page: 1, pageSize: 100 };
 
@@ -297,5 +315,124 @@ describe('document deletion RBAC', () => {
   it('admin can delete any document', async () => {
     const result = await docService.deleteDocument(adminAuth, projectDocId);
     expect(result.deleted).toBe(true);
+  });
+});
+
+describe('document upload', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(extractText).mockResolvedValue({ text: 'sample text' });
+    vi.mocked(chunkText).mockReturnValue(['chunk1', 'chunk2']);
+    vi.mocked(embedMany).mockResolvedValue([
+      { vector: [0.1, 0.2, 0.3, 0.4], degraded: false },
+      { vector: [0.5, 0.6, 0.7, 0.8], degraded: false },
+    ]);
+    vi.mocked(assertMimeMatchesMagic).mockReturnValue(undefined);
+  });
+
+  it('admin can upload an organization-scoped document', async () => {
+    const result = await docService.uploadDocument(
+      adminAuth,
+      { title: 'New Org Doc', visibility: 'organization' },
+      { buffer: Buffer.from('test'), originalname: 'doc.txt', mimetype: 'text/plain', size: 4 },
+    );
+    expect(result.title).toBe('New Org Doc');
+    expect(result.visibility).toBe('organization');
+    expect(result.status).toBe('indexed');
+    expect(result.organizationId).toBe(ORG.toString());
+    expect(result.originalFilename).toBe('doc.txt');
+  });
+
+  it('member cannot upload documents', async () => {
+    await expect(
+      docService.uploadDocument(
+        memberAAuth,
+        { title: 'Member Doc', visibility: 'organization' },
+        { buffer: Buffer.from('x'), originalname: 'x.txt', mimetype: 'text/plain', size: 1 },
+      ),
+    ).rejects.toThrow('Members cannot upload documents');
+  });
+
+  it('uploadDocument with team scope requires valid teamId', async () => {
+    const fakeTeamId = new Types.ObjectId().toString();
+    await expect(
+      docService.uploadDocument(
+        adminAuth,
+        { title: 'Team Doc', visibility: 'team', teamId: fakeTeamId },
+        { buffer: Buffer.from('x'), originalname: 'x.txt', mimetype: 'text/plain', size: 1 },
+      ),
+    ).rejects.toThrow('Team not found');
+  });
+
+  it('uploadDocument creates chunks when text is extracted', async () => {
+    const result = await docService.uploadDocument(
+      adminAuth,
+      { title: 'Chunky Doc', visibility: 'organization' },
+      {
+        buffer: Buffer.from('chunky'),
+        originalname: 'chunky.txt',
+        mimetype: 'text/plain',
+        size: 6,
+      },
+    );
+    const docObjectId = new Types.ObjectId(result.id);
+    const chunks = await DocumentChunkModel.find({ documentId: docObjectId });
+    expect(chunks.length).toBe(2);
+    expect(chunks.map((c) => c.content)).toEqual(['chunk1', 'chunk2']);
+  });
+});
+
+describe('document reindex', () => {
+  let reindexableDocId: string;
+
+  beforeAll(async () => {
+    const doc = await DocumentModel.create({
+      organizationId: ORG,
+      teamId: null,
+      projectId: null,
+      visibility: 'organization',
+      title: 'Reindexable Doc',
+      originalFilename: 'reindex.txt',
+      mimeType: 'text/plain',
+      uploadedBy: ADMIN_ID,
+      status: 'indexed',
+      allowedRoles: [],
+      chunkCount: 1,
+      error: null,
+      rawText: 'original text content',
+    });
+    reindexableDocId = doc.id as string;
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(chunkText).mockReturnValue(['re-chunk1', 're-chunk2']);
+    vi.mocked(embedMany).mockResolvedValue([
+      { vector: [0.1, 0.2, 0.3, 0.4], degraded: false },
+      { vector: [0.5, 0.6, 0.7, 0.8], degraded: false },
+    ]);
+  });
+
+  it('admin can reindex an existing indexed document', async () => {
+    const result = await docService.reindexDocument(adminAuth, reindexableDocId);
+    expect(result.status).toBe('indexed');
+    expect(result.id).toBe(reindexableDocId);
+
+    const docObjectId = new Types.ObjectId(reindexableDocId);
+    const chunks = await DocumentChunkModel.find({ documentId: docObjectId });
+    expect(chunks.length).toBe(2);
+    expect(chunks.map((c) => c.content)).toEqual(['re-chunk1', 're-chunk2']);
+  });
+
+  it('member cannot reindex documents', async () => {
+    await expect(docService.reindexDocument(memberAAuth, reindexableDocId)).rejects.toThrow(
+      'Members cannot reindex documents',
+    );
+  });
+
+  it('reindex on a document without rawText throws validation error', async () => {
+    await expect(docService.reindexDocument(adminAuth, orgDocId)).rejects.toThrow(
+      'Document has no stored text; re-upload instead',
+    );
   });
 });

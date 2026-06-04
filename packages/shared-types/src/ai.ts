@@ -15,7 +15,7 @@ export interface DocumentResponseDto {
   title: string;
   originalFilename: string;
   mimeType: string;
-  uploadedBy: string;
+  uploadedBy: string | null;
   status: DocumentStatus;
   allowedRoles: UserRole[];
   chunkCount: number | null;

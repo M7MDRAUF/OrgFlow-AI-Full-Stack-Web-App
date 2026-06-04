@@ -104,12 +104,16 @@ export function useUpdateTask(): ReturnType<
       return { previous };
     },
     onError: (_err, _vars, context) => {
-      // Rollback to snapshot on failure.
-      const ctx = context as
-        | { previous: [readonly unknown[], TaskResponseDto[] | undefined][] }
-        | undefined;
-      if (ctx?.previous) {
-        for (const [key, data] of ctx.previous) {
+      if (
+        typeof context === 'object' &&
+        context !== null &&
+        'previous' in context &&
+        Array.isArray((context as { previous: unknown }).previous)
+      ) {
+        const { previous } = context as {
+          previous: [readonly unknown[], TaskResponseDto[] | undefined][];
+        };
+        for (const [key, data] of previous) {
           qc.setQueryData(key, data);
         }
       }
@@ -151,7 +155,7 @@ export function useTaskComments(
   taskId: string | null,
 ): ReturnType<typeof useQuery<TaskCommentResponseDto[]>> {
   return useQuery<TaskCommentResponseDto[]>({
-    queryKey: [...QUERY_KEYS.tasks, 'comments', taskId],
+    queryKey: [...QUERY_KEYS.tasks, 'comments', taskId ?? '__none__'],
     enabled: taskId !== null,
     queryFn: async ({ signal }) => {
       const res = await apiClient.get<{

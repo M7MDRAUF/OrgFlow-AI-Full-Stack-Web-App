@@ -78,4 +78,20 @@ describe('validate middleware', () => {
     validate({ query: qSchema })(req, fakeRes(), next);
     expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 400 }));
   });
+
+  it('strips unexpected properties from query and params', () => {
+    const qSchema = z.object({ limit: z.coerce.number().int().positive() });
+    const pSchema = z.object({ id: z.string().min(1) });
+    const next = vi.fn<NextFunction>();
+    const req = fakeReq({
+      query: { limit: '10', unexpectedQuery: 'malicious' } as unknown as Request['query'],
+      params: { id: 'some-id', unexpectedParam: 'ignored' } as unknown as Request['params'],
+    });
+    validate({ query: qSchema, params: pSchema })(req, fakeRes(), next);
+    expect(next).toHaveBeenCalledWith();
+    expect(req.query).toEqual({ limit: 10 });
+    expect(req.params).toEqual({ id: 'some-id' });
+    expect(req.query).not.toHaveProperty('unexpectedQuery');
+    expect(req.params).not.toHaveProperty('unexpectedParam');
+  });
 });

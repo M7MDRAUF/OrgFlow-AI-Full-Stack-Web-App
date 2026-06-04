@@ -11,6 +11,7 @@ export default defineConfig({
       NODE_ENV: 'test',
       MONGODB_URI: 'mongodb://placeholder/orgflow_test',
       JWT_SECRET: 'test-secret-at-least-16-chars-long',
+      DEV_VECTOR_FALLBACK: '1',
     },
     coverage: {
       provider: 'v8',

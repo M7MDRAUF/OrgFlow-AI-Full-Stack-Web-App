@@ -7,14 +7,13 @@ import { authStorage } from '../storage.js';
 import { useLogin } from '../useAuth.js';
 
 interface LocationState {
-  from?: { pathname?: string } | string;
+  from?: string;
 }
 
 export function LoginPage(): JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
   const login = useLogin();
-  const [organizationSlug, setOrganizationSlug] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
@@ -25,22 +24,18 @@ export function LoginPage(): JSX.Element {
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
     login.mutate(
-      { organizationSlug, email, password },
+      { email, password },
       {
         onSuccess: () => {
-          // BUG-LOW-1: handle both state.from (string or {pathname}) and ?from= query param.
           const raw: unknown = location.state;
-          let redirectTo: string | undefined;
-          if (typeof raw === 'object' && raw !== null && 'from' in raw) {
-            const fromVal = (raw as LocationState).from;
-            if (typeof fromVal === 'string') {
-              redirectTo = fromVal;
-            } else if (typeof fromVal?.pathname === 'string') {
-              redirectTo = fromVal.pathname;
-            }
-          }
-          if (redirectTo === undefined || redirectTo === '') {
-            redirectTo = new URLSearchParams(location.search).get('from') ?? '/';
+          let redirectTo = '/';
+          if (
+            typeof raw === 'object' &&
+            raw !== null &&
+            'from' in raw &&
+            typeof (raw as LocationState).from === 'string'
+          ) {
+            redirectTo = (raw as LocationState).from ?? '/';
           }
           navigate(redirectTo, { replace: true });
         },
@@ -56,19 +51,6 @@ export function LoginPage(): JSX.Element {
         </h1>
         <Card title="Sign in">
           <form onSubmit={handleSubmit} className="space-y-4">
-            <Field label="Organization" htmlFor="login-org-slug">
-              <Input
-                id="login-org-slug"
-                type="text"
-                autoComplete="organization"
-                required
-                placeholder="your-org-slug"
-                value={organizationSlug}
-                onChange={(e) => {
-                  setOrganizationSlug(e.target.value);
-                }}
-              />
-            </Field>
             <Field label="Email" htmlFor="login-email">
               <Input
                 id="login-email"

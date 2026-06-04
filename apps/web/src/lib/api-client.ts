@@ -7,7 +7,7 @@ import { queryClient } from './query-client.js';
 function resolveBaseUrl(): string {
   const raw: unknown = import.meta.env['VITE_API_BASE_URL'];
   if (typeof raw !== 'string' || raw.length === 0) {
-    return 'http://localhost:4000/api/v1';
+    throw new Error('VITE_API_BASE_URL environment variable is required');
   }
   return raw;
 }

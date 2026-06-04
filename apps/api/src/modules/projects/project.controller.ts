@@ -3,10 +3,10 @@ import { errors } from '../../utils/errors.js';
 import { paginationSchema } from '../../utils/pagination.js';
 import { requireParam } from '../../utils/request.js';
 import { sendSuccess } from '../../utils/response.js';
-import type {
-  CreateProjectInput,
-  ListProjectsQuery,
-  UpdateProjectInput,
+import {
+  listProjectsQuerySchema,
+  type CreateProjectInput,
+  type UpdateProjectInput,
 } from './project.schema.js';
 import * as projectService from './project.service.js';
 
@@ -19,7 +19,7 @@ export async function listProjectsHandler(req: Request, res: Response): Promise<
   const pagination = paginationSchema.parse(req.query);
   const { items, total } = await projectService.listProjects(
     requireAuth(req),
-    req.query as unknown as ListProjectsQuery,
+    listProjectsQuerySchema.parse(req.query),
     pagination,
   );
   sendSuccess(

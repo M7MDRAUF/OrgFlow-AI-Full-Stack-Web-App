@@ -59,7 +59,8 @@ describe('useTeams', () => {
     expect(result.current.data).toEqual([sampleTeam]);
     expect(mockedGet).toHaveBeenCalledWith(
       '/teams',
-      expect.objectContaining({ signal: expect.any(AbortSignal) as unknown }),
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
   });
 });

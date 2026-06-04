@@ -25,7 +25,7 @@
     "react-dom": "^18.3.1",
     "react-hot-toast": "^2.6.0",
     "react-markdown": "^9.1.0",
-    "react-router-dom": "^6.28.0",
+    "react-router-dom": "^6.30.4",
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "^2.5.5",
     "zod": "^3.23.8"
@@ -37,13 +37,13 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
-    "@vitest/coverage-v8": "^2.1.6",
+    "@vitest/coverage-v8": "^4.1.8",
     "autoprefixer": "^10.4.20",
     "jsdom": "^25.0.1",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.15",
     "typescript": "^5.6.3",
-    "vite": "^5.4.11",
-    "vitest": "^2.1.6"
+    "vite": "^8.0.16",
+    "vitest": "^4.1.8"
   }
 }

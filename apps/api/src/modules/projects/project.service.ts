@@ -4,6 +4,7 @@ import type { ProjectResponseDto } from '@orgflow/shared-types';
 import { Types, type FilterQuery } from 'mongoose';
 import type { AuthContext } from '../../middleware/auth-context.js';
 import { logAudit } from '../../utils/audit.js';
+import { assertObjectId } from '../../utils/object-id.js';
 import { errors } from '../../utils/errors.js';
 import { toSkipLimit, type Pagination } from '../../utils/pagination.js';
 import { runInTransaction, sessionOpts } from '../../utils/transactions.js';
@@ -18,11 +19,6 @@ import type {
   ListProjectsQuery,
   UpdateProjectInput,
 } from './project.schema.js';
-
-function assertObjectId(id: string, label: string): Types.ObjectId {
-  if (!Types.ObjectId.isValid(id)) throw errors.validation(`Invalid ${label}`);
-  return new Types.ObjectId(id);
-}
 
 function toDto(doc: ProjectHydrated): ProjectResponseDto {
   return {
@@ -155,17 +151,6 @@ export async function createProject(
     status: input.status ?? 'planned',
     startDate: input.startDate !== undefined ? new Date(input.startDate) : null,
     dueDate: input.dueDate !== undefined ? new Date(input.dueDate) : null,
-  }).catch((err: unknown) => {
-    // BUG-LOW-13: handle unique index violation on (organizationId, teamId, title).
-    if (
-      err !== null &&
-      typeof err === 'object' &&
-      'code' in err &&
-      (err as { code: unknown }).code === 11000
-    ) {
-      throw errors.conflict('A project with this title already exists in the team');
-    }
-    throw err;
   });
   logAudit(auth, {
     action: 'project.create',

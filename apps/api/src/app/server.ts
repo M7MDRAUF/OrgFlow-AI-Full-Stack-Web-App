@@ -2,6 +2,7 @@
 import type { Server } from 'node:http';
 import { connectDatabase, disconnectDatabase } from '../config/db.js';
 import { getLogger } from '../config/logger.js';
+import { ensureChatLogTtlIndex } from '../modules/ai/chat/chat-log.model.js';
 import { createApp } from './app.js';
 import { loadEnv } from './env.js';
 
@@ -16,6 +17,7 @@ async function main(): Promise<void> {
     logger.error({ err }, 'failed to connect to mongodb');
     process.exit(1);
   }
+  await ensureChatLogTtlIndex();
   const app = createApp(env);
   const server: Server = app.listen(env.PORT, () => {
     logger.info(`[api] listening on port ${String(env.PORT)} (${env.NODE_ENV})`);
@@ -23,7 +25,7 @@ async function main(): Promise<void> {
 
   // Graceful shutdown handler — close HTTP connections first, then DB.
   let shuttingDown = false;
-  const shutdown = (signal: string): void => {
+  const shutdown = async (signal: string): Promise<void> => {
     if (shuttingDown) return;
     shuttingDown = true;
     logger.info({ signal }, 'shutdown signal received, draining connections…');
@@ -36,29 +38,35 @@ async function main(): Promise<void> {
     // Unref so the timer alone does not keep the event loop alive.
     forceTimer.unref();
 
-    server.close(() => {
-      logger.info('http server closed');
-      disconnectDatabase()
-        .then(() => {
-          logger.info('mongodb disconnected, exiting');
-          process.exit(0);
-        })
-        .catch((err: unknown) => {
-          logger.error({ err }, 'error during db disconnect');
-          process.exit(1);
-        });
+    // Await in-flight requests before proceeding with DB teardown.
+    await new Promise<void>((resolve) => {
+      server.close(() => {
+        logger.info('http server closed');
+        resolve();
+      });
     });
+
+    try {
+      await disconnectDatabase();
+      logger.info('mongodb disconnected, exiting');
+      process.exit(0);
+    } catch (err: unknown) {
+      logger.error({ err }, 'error during db disconnect');
+      process.exit(1);
+    }
   };
 
   process.on('SIGTERM', () => {
-    shutdown('SIGTERM');
+    shutdown('SIGTERM').catch(() => process.exit(1));
   });
   process.on('SIGINT', () => {
-    shutdown('SIGINT');
+    shutdown('SIGINT').catch(() => process.exit(1));
   });
 }
 
 main().catch((err: unknown) => {
-  console.error('fatal bootstrap error', err);
+  const env = loadEnv();
+  const logger = getLogger(env);
+  logger.fatal({ err }, 'fatal bootstrap error');
   process.exit(1);
 });

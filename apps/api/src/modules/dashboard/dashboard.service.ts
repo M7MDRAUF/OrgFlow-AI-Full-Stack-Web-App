@@ -49,13 +49,7 @@ async function adminDashboard(auth: AuthContext): Promise<AdminDashboardResponse
     aggregateTasks(match, now),
   ]);
 
-  // BUG-MEDIUM-7: increase cap to 200 and expose truncation so callers know
-  // when the byTeam list is partial. Previously hard-coded at 50 with no signal.
-  const TEAM_LIST_LIMIT = 200;
-  const [totalTeamCount, teamsList] = await Promise.all([
-    TeamModel.countDocuments(match),
-    TeamModel.find(match).sort({ name: 1 }).limit(TEAM_LIST_LIMIT),
-  ]);
+  const teamsList = await TeamModel.find(match).sort({ name: 1 });
   const teamIds = teamsList.map((t) => t._id);
 
   // N+1 fix: batch-aggregate project/task/overdue counts per team in 3 queries
@@ -110,10 +104,6 @@ async function adminDashboard(auth: AuthContext): Promise<AdminDashboardResponse
       tasksTodo: taskAgg.todo,
     },
     byTeam,
-    // BUG-MEDIUM-7: expose truncation state so the frontend/API consumer
-    // can inform the user when the list is a partial result.
-    totalTeams: totalTeamCount,
-    byTeamTruncated: totalTeamCount > TEAM_LIST_LIMIT,
   };
 }
 
@@ -208,13 +198,9 @@ async function memberDashboard(auth: AuthContext): Promise<MemberDashboardRespon
   const now = new Date();
   const taskAgg = await aggregateTasks(match, now);
 
-  // BUG-MEDIUM-8: exclude null-dueDate tasks from the upcoming list and sort
-  // the remaining tasks by nearest deadline. Previously null dueDate sorted
-  // FIRST (MongoDB ascending null < any date), hiding truly urgent tasks.
   const upcomingDocs = await TaskModel.find({
     ...match,
     status: { $ne: 'done' },
-    dueDate: { $ne: null },
   })
     .sort({ dueDate: 1, priority: -1 })
     .limit(10);

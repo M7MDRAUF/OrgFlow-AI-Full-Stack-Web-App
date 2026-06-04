@@ -4,6 +4,7 @@ import { requireRole } from '../../middleware/role.middleware.js';
 import { validate } from '../../middleware/validate.middleware.js';
 import { asyncHandler } from '../../utils/async-handler.js';
 import {
+  deleteUserHandler,
   getUserHandler,
   listUsersHandler,
   updateUserHandler,
@@ -110,5 +111,25 @@ export function createUsersRouter(): Router {
     validate({ body: updateUserStatusSchema }),
     asyncHandler(updateUserStatusHandler),
   );
+  /**
+   * @openapi
+   * /users/{id}:
+   *   delete:
+   *     tags: [Users]
+   *     summary: Delete a user
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema: { type: string }
+   *     responses:
+   *       200:
+   *         description: User deleted successfully
+   *       403:
+   *         description: Forbidden
+   *       404:
+   *         description: User not found
+   */
+  router.delete('/:id', requireRole('admin'), asyncHandler(deleteUserHandler));
   return router;
 }

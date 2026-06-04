@@ -156,8 +156,8 @@ describe('project delete cascade (BUG-001)', () => {
       createdBy: LEADER_ID,
     });
     await TaskCommentModel.create({
-      taskId: task._id,
       organizationId: ORG,
+      taskId: task._id,
       userId: LEADER_ID,
       body: 'cascade comment',
     });
@@ -169,6 +169,7 @@ describe('project delete cascade (BUG-001)', () => {
     });
     const remainingComments = await TaskCommentModel.countDocuments({
       taskId: task._id,
+      organizationId: ORG,
     });
     expect(remainingTasks).toBe(0);
     expect(remainingComments).toBe(0);

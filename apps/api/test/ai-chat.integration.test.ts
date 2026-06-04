@@ -8,7 +8,6 @@ import { createApp } from '../src/app/app.js';
 import { loadEnv } from '../src/app/env.js';
 import { signAuthToken } from '../src/middleware/auth.middleware.js';
 import { ChatLogModel } from '../src/modules/ai/chat/chat-log.model.js';
-import { UserModel } from '../src/modules/users/user.model.js';
 import './setup-db.js';
 
 const env = loadEnv();
@@ -19,20 +18,6 @@ const USER_ID = new Types.ObjectId();
 let token: string;
 
 beforeAll(async () => {
-  const pw = 'chat-test-pw-hash'; // not used for login, just required by schema
-  await UserModel.create({
-    _id: USER_ID,
-    organizationId: ORG,
-    teamId: null,
-    email: 'chat-user@test',
-    displayName: 'Chat User',
-    role: 'member',
-    status: 'active',
-    passwordHash: pw,
-    inviteTokenHash: null,
-    inviteExpiresAt: null,
-    themePreference: 'system',
-  });
   token = signAuthToken({
     sub: USER_ID.toString(),
     organizationId: ORG.toString(),

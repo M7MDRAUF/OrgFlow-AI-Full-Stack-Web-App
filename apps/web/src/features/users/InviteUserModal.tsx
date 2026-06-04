@@ -1,7 +1,13 @@
-import type { UserRole } from '@orgflow/shared-types';
+import { USER_ROLES, type UserRole } from '@orgflow/shared-types';
 import { Button, Field, Input, Modal, Select } from '@orgflow/ui';
 import { useState, type FormEvent, type JSX } from 'react';
+import { z } from 'zod';
 import { useInviteUser } from './useUsers.js';
+
+const inviteUserSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  name: z.string().min(1, 'Name is required'),
+});
 
 export interface InviteUserModalProps {
   teams: { id: string; name: string }[];
@@ -32,9 +38,16 @@ export function InviteUserModal(props: InviteUserModalProps): JSX.Element {
   async function onSubmit(): Promise<void> {
     setError(null);
     try {
+      const trimmedName = name.trim();
+      const trimmedEmail = email.trim().toLowerCase();
+      const parsed = inviteUserSchema.safeParse({ name: trimmedName, email: trimmedEmail });
+      if (!parsed.success) {
+        setError(parsed.error.issues[0]?.message ?? 'Validation failed');
+        return;
+      }
       const result = await invite.mutateAsync({
-        name: name.trim(),
-        email: email.trim().toLowerCase(),
+        name: trimmedName,
+        email: trimmedEmail,
         role,
         ...(teamId !== '' ? { teamId } : {}),
       });
@@ -66,20 +79,10 @@ export function InviteUserModal(props: InviteUserModalProps): JSX.Element {
     >
       {inviteToken !== null ? (
         <div className="flex flex-col gap-2">
-          <p className="text-sm">Activation link generated (valid for 7 days).</p>
-          {/* BUG-LOW-23: do NOT render the raw token in the DOM — use clipboard
-              copy instead so the single-use token is not accessible to XSS or
-              browser extensions inspecting the DOM. */}
-          <Button
-            variant="ghost"
-            onClick={() => {
-              void navigator.clipboard.writeText(
-                `${window.location.origin}/activate?token=${inviteToken}`,
-              );
-            }}
-          >
-            Copy invite link
-          </Button>
+          <p className="text-sm">Share this activation link (valid for 7 days):</p>
+          <code className="block break-all rounded bg-slate-100 p-2 text-xs dark:bg-slate-800">
+            {window.location.origin}/activate?token={inviteToken}
+          </code>
         </div>
       ) : (
         <form
@@ -115,7 +118,8 @@ export function InviteUserModal(props: InviteUserModalProps): JSX.Element {
               options={roleSelect}
               value={role}
               onChange={(e) => {
-                setRole(e.target.value as UserRole);
+                const parsed = z.enum(USER_ROLES).safeParse(e.target.value);
+                if (parsed.success) setRole(parsed.data);
               }}
             />
           </Field>

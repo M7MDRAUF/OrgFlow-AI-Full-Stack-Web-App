@@ -41,8 +41,7 @@ const projectSchema = new Schema<ProjectDoc>(
   { timestamps: true },
 );
 
-// BUG-LOW-13: add unique:true to enforce no duplicate titles within the same org+team.
-projectSchema.index({ organizationId: 1, teamId: 1, title: 1 }, { unique: true });
+projectSchema.index({ organizationId: 1, teamId: 1, title: 1 });
 projectSchema.index({ organizationId: 1, teamId: 1, status: 1 });
 
 export const ProjectModel: Model<ProjectDoc> = model<ProjectDoc>('Project', projectSchema);

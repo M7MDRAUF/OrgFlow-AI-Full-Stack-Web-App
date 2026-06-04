@@ -172,7 +172,8 @@ export function ProjectFormModal(props: ProjectFormModalProps): JSX.Element {
               options={statusSelect}
               value={status}
               onChange={(e) => {
-                setStatus(e.target.value as ProjectStatus);
+                const parsed = z.enum(PROJECT_STATUSES).safeParse(e.target.value);
+                if (parsed.success) setStatus(parsed.data);
               }}
             />
           </Field>

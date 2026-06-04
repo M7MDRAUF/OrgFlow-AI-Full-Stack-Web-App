@@ -26,7 +26,12 @@ export function createTeamsRouter(): Router {
    *       200:
    *         description: Array of teams
    */
-  router.get('/', validate({ query: listTeamsQuerySchema }), asyncHandler(listTeamsHandler));
+  router.get(
+    '/',
+    requireRole('member'),
+    validate({ query: listTeamsQuerySchema }),
+    asyncHandler(listTeamsHandler),
+  );
   /**
    * @openapi
    * /teams/{id}:
@@ -44,7 +49,7 @@ export function createTeamsRouter(): Router {
    *       404:
    *         description: Team not found
    */
-  router.get('/:id', asyncHandler(getTeamHandler));
+  router.get('/:id', requireRole('member'), asyncHandler(getTeamHandler));
   /**
    * @openapi
    * /teams:

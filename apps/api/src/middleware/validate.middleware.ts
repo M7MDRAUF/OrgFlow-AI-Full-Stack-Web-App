@@ -4,6 +4,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import type { ZodTypeAny } from 'zod';
 import { errors } from '../utils/errors.js';
+import { paginationSchema } from '../utils/pagination.js';
 
 interface Schemas {
   body?: ZodTypeAny;
@@ -19,10 +20,22 @@ export function validate(schemas: Schemas) {
       }
       if (schemas.query !== undefined) {
         const parsed = runSchema(schemas.query, req.query, 'query') as Record<string, unknown>;
-        Object.assign(req.query as Record<string, unknown>, parsed);
+        const paginationParsed = paginationSchema.safeParse(req.query);
+        const paginationData: Record<string, unknown> = {};
+        if (paginationParsed.success) {
+          if ('page' in req.query) paginationData.page = paginationParsed.data.page;
+          if ('pageSize' in req.query) paginationData.pageSize = paginationParsed.data.pageSize;
+        }
+        for (const key of Object.keys(req.query)) {
+          Reflect.deleteProperty(req.query, key);
+        }
+        Object.assign(req.query as Record<string, unknown>, parsed, paginationData);
       }
       if (schemas.params !== undefined) {
         const parsed = runSchema(schemas.params, req.params, 'params') as Record<string, unknown>;
+        for (const key of Object.keys(req.params)) {
+          Reflect.deleteProperty(req.params, key);
+        }
         Object.assign(req.params as Record<string, unknown>, parsed);
       }
       next();

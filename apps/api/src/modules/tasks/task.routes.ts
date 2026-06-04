@@ -24,6 +24,7 @@ import {
 export function createTasksRouter(): Router {
   const router = Router();
   router.use(authMiddleware);
+  router.use(requireRole('member'));
 
   /**
    * @openapi
@@ -85,18 +86,13 @@ export function createTasksRouter(): Router {
    *               description: { type: string }
    *               projectId: { type: string }
    *               assigneeId: { type: string }
-   *               priority: { type: string, enum: [low, medium, high, urgent] }
+   *               priority: { type: string, enum: [low, medium, high] }
    *               dueDate: { type: string, format: date-time }
    *     responses:
    *       201:
    *         description: Created task
    */
-  router.post(
-    '/',
-    requireRole('leader'),
-    validate({ body: createTaskSchema }),
-    asyncHandler(createTaskHandler),
-  );
+  router.post('/', validate({ body: createTaskSchema }), asyncHandler(createTaskHandler));
   /**
    * @openapi
    * /tasks/{id}:
@@ -126,12 +122,7 @@ export function createTasksRouter(): Router {
    *       404:
    *         description: Task not found
    */
-  router.patch(
-    '/:id',
-    requireRole('member'),
-    validate({ body: updateTaskSchema }),
-    asyncHandler(updateTaskHandler),
-  );
+  router.patch('/:id', validate({ body: updateTaskSchema }), asyncHandler(updateTaskHandler));
   /**
    * @openapi
    * /tasks/{id}/status:
@@ -151,7 +142,7 @@ export function createTasksRouter(): Router {
    *             type: object
    *             required: [status]
    *             properties:
-   *               status: { type: string, enum: [todo, in_progress, in_review, done] }
+   *               status: { type: string, enum: [todo, in-progress, done] }
    *     responses:
    *       200:
    *         description: Updated task status
@@ -160,7 +151,6 @@ export function createTasksRouter(): Router {
    */
   router.patch(
     '/:id/status',
-    requireRole('member'),
     validate({ body: updateTaskStatusSchema }),
     asyncHandler(updateTaskStatusHandler),
   );
@@ -181,7 +171,7 @@ export function createTasksRouter(): Router {
    *       404:
    *         description: Task not found
    */
-  router.delete('/:id', requireRole('leader'), asyncHandler(deleteTaskHandler));
+  router.delete('/:id', asyncHandler(deleteTaskHandler));
   /**
    * @openapi
    * /tasks/{id}/comments:
@@ -228,7 +218,6 @@ export function createTasksRouter(): Router {
    */
   router.post(
     '/:id/comments',
-    requireRole('member'),
     validate({ body: createCommentSchema }),
     asyncHandler(createCommentHandler),
   );

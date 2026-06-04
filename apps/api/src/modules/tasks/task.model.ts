@@ -59,11 +59,9 @@ taskSchema.index({ organizationId: 1, dueDate: 1, status: 1 });
 export const TaskModel: Model<TaskDoc> = model<TaskDoc>('Task', taskSchema);
 export type TaskHydrated = HydratedDocument<TaskDoc>;
 
-// BUG-LOW-15: add organizationId to TaskCommentDoc so comments can be
-// independently scope-filtered without joining through their parent task.
 export interface TaskCommentDoc {
-  taskId: Types.ObjectId;
   organizationId: Types.ObjectId;
+  taskId: Types.ObjectId;
   userId: Types.ObjectId;
   body: string;
   createdAt: Date;
@@ -72,13 +70,20 @@ export interface TaskCommentDoc {
 
 const commentSchema = new Schema<TaskCommentDoc>(
   {
+    organizationId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Organization',
+      required: true,
+      index: true,
+    },
     taskId: { type: Schema.Types.ObjectId, ref: 'Task', required: true, index: true },
-    organizationId: { type: Schema.Types.ObjectId, required: true, index: true },
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     body: { type: String, required: true, trim: true },
   },
   { timestamps: true },
 );
+
+commentSchema.index({ organizationId: 1, taskId: 1 });
 
 export const TaskCommentModel: Model<TaskCommentDoc> = model<TaskCommentDoc>(
   'TaskComment',

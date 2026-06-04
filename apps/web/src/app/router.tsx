@@ -98,7 +98,6 @@ export function AppRoutes(): JSX.Element {
           />
           <Route path="announcements" element={<AnnouncementsPage />} />
           <Route path="assistant" element={<AssistantPage />} />
-          {/* BUG-LOW-6: knowledge page requires leader+ (admin was too strict) */}
           <Route
             path="knowledge"
             element={

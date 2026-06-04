@@ -1,7 +1,13 @@
 import type { TeamResponseDto, UserResponseDto } from '@orgflow/shared-types';
 import { Button, Field, Input, Modal, Select, Textarea } from '@orgflow/ui';
 import { useState, type FormEvent, type JSX } from 'react';
+import { z } from 'zod';
 import { useCreateTeam, useUpdateTeam } from './useTeams.js';
+
+const teamFormSchema = z.object({
+  name: z.string().min(1, 'Team name is required'),
+  description: z.string().nullable().optional(),
+});
 
 export interface TeamFormModalProps {
   team?: TeamResponseDto;
@@ -33,6 +39,14 @@ export function TeamFormModal(props: TeamFormModalProps): JSX.Element {
     try {
       const trimmedName = name.trim();
       const trimmedDesc = description.trim();
+      const parsed = teamFormSchema.safeParse({
+        name: trimmedName,
+        description: trimmedDesc || null,
+      });
+      if (!parsed.success) {
+        setError(parsed.error.issues[0]?.message ?? 'Validation failed');
+        return;
+      }
       if (isEdit) {
         const input: { name?: string; description?: string | null; leaderId?: string | null } = {};
         if (trimmedName !== team.name) input.name = trimmedName;

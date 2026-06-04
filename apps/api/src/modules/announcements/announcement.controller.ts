@@ -3,10 +3,10 @@ import { errors } from '../../utils/errors.js';
 import { paginationSchema } from '../../utils/pagination.js';
 import { requireParam } from '../../utils/request.js';
 import { sendSuccess } from '../../utils/response.js';
-import type {
-  CreateAnnouncementInput,
-  ListAnnouncementsQuery,
-  UpdateAnnouncementInput,
+import {
+  listAnnouncementsQuerySchema,
+  type CreateAnnouncementInput,
+  type UpdateAnnouncementInput,
 } from './announcement.schema.js';
 import * as announcementService from './announcement.service.js';
 
@@ -19,7 +19,7 @@ export async function listAnnouncementsHandler(req: Request, res: Response): Pro
   const pagination = paginationSchema.parse(req.query);
   const { items, total } = await announcementService.listAnnouncements(
     requireAuth(req),
-    req.query as unknown as ListAnnouncementsQuery,
+    listAnnouncementsQuerySchema.parse(req.query),
     pagination,
   );
   sendSuccess(

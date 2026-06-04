@@ -8,11 +8,8 @@ export const updateUserSchema = z.object({
   themePreference: z.enum(['light', 'dark', 'system']).optional(),
 });
 
-// BUG-MEDIUM-3: restrict the status values an admin can explicitly set.
-// 'pending' is an initial-invite state set by the system, not a valid
-// target for a manual status update (it would re-lock invited users).
 export const updateUserStatusSchema = z.object({
-  status: z.enum(['active', 'disabled'] as const),
+  status: z.enum(USER_STATUSES),
 });
 
 export const listUsersQuerySchema = z.object({

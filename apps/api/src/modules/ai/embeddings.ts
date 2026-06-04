@@ -5,6 +5,12 @@
 
 import { loadEnv } from '../../app/env.js';
 import { getLogger } from '../../config/logger.js';
+import { createCircuitBreaker, type CircuitBreaker } from '../../utils/circuit-breaker.js';
+
+const ollamaEmbedBreaker: CircuitBreaker = createCircuitBreaker('ollama-embed', {
+  failureThreshold: 3,
+  cooldownMs: 30_000,
+});
 
 // Dimensions are env-driven so deployments can swap embedding models without
 // a code change (I-003). Callers MUST always use getEmbeddingDimensions() when
@@ -13,7 +19,7 @@ export function getEmbeddingDimensions(): number {
   return loadEnv().OLLAMA_EMBED_DIMENSIONS;
 }
 
-function deterministicEmbedding(text: string, dims: number): number[] {
+export function deterministicEmbedding(text: string, dims: number): number[] {
   const vec = new Array<number>(dims).fill(0);
   for (let i = 0; i < text.length; i += 1) {
     const code = text.charCodeAt(i);
@@ -49,6 +55,16 @@ export async function embedText(text: string): Promise<number[]> {
 }
 
 export async function embedTextWithStatus(text: string): Promise<EmbedResult> {
+  if (ollamaEmbedBreaker.isOpen()) {
+    const env = loadEnv();
+    const dims = env.OLLAMA_EMBED_DIMENSIONS;
+    getLogger(env).warn(
+      { circuitBreaker: ollamaEmbedBreaker.getName() },
+      'AI-03: Ollama circuit breaker open — skipping embed attempt, using deterministic fallback',
+    );
+    return { vector: deterministicEmbedding(text, dims), degraded: true };
+  }
+
   const env = loadEnv();
   const dims = env.OLLAMA_EMBED_DIMENSIONS;
   const url = `${env.OLLAMA_HOST}/api/embeddings`;
@@ -71,8 +87,10 @@ export async function embedTextWithStatus(text: string): Promise<EmbedResult> {
         `Embedding dimension mismatch: expected ${String(dims)}, got ${String(data.embedding.length)}`,
       );
     }
+    ollamaEmbedBreaker.recordSuccess();
     return { vector: data.embedding, degraded: false };
   } catch (err: unknown) {
+    ollamaEmbedBreaker.recordFailure();
     // DA-001: Only fall back on network/availability errors. Configuration
     // errors (dimension mismatch, empty embeddings) MUST propagate so that
     // callers surface them instead of silently indexing garbage vectors.

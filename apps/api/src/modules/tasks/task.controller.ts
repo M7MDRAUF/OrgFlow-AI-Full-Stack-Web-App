@@ -3,12 +3,12 @@ import { errors } from '../../utils/errors.js';
 import { paginationSchema } from '../../utils/pagination.js';
 import { requireParam } from '../../utils/request.js';
 import { sendSuccess } from '../../utils/response.js';
-import type {
-  CreateCommentInput,
-  CreateTaskInput,
-  ListTasksQuery,
-  UpdateTaskInput,
-  UpdateTaskStatusInput,
+import {
+  listTasksQuerySchema,
+  type CreateCommentInput,
+  type CreateTaskInput,
+  type UpdateTaskInput,
+  type UpdateTaskStatusInput,
 } from './task.schema.js';
 import * as taskService from './task.service.js';
 
@@ -21,7 +21,7 @@ export async function listTasksHandler(req: Request, res: Response): Promise<voi
   const pagination = paginationSchema.parse(req.query);
   const { items, total } = await taskService.listTasks(
     requireAuth(req),
-    req.query as unknown as ListTasksQuery,
+    listTasksQuerySchema.parse(req.query),
     pagination,
   );
   sendSuccess(

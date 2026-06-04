@@ -43,16 +43,22 @@ const chatLogSchema = new Schema<ChatLogDoc>(
 
 chatLogSchema.index({ organizationId: 1, userId: 1, createdAt: -1 });
 
-// DB-02: bound chat history growth with a Mongo TTL index. Set
-// CHAT_LOG_TTL_DAYS=0 in env to disable (emit no TTL index). Mongo applies
-// `expireAfterSeconds` against the indexed Date field; we use `createdAt`
-// because it is monotonic and never updated by message edits.
-const ttlDays = loadEnv().CHAT_LOG_TTL_DAYS;
-if (ttlDays > 0) {
-  chatLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: ttlDays * 24 * 60 * 60 });
-}
-
 export type ChatLogModelType = Model<ChatLogDoc>;
 export type ChatLogHydrated = HydratedDocument<ChatLogDoc>;
 
 export const ChatLogModel = model<ChatLogDoc>('ChatLog', chatLogSchema);
+
+// DB-02: bound chat history growth with a lazy TTL index instead of calling
+// loadEnv() at module load time — env vars may not be ready or may mutate
+// in tests. Call ensureChatLogTtlIndex() explicitly during app startup.
+let ttlIndexEnsured = false;
+
+export async function ensureChatLogTtlIndex(): Promise<void> {
+  if (ttlIndexEnsured) return;
+  const ttlDays = loadEnv().CHAT_LOG_TTL_DAYS;
+  if (ttlDays > 0) {
+    const expireAfterSeconds = ttlDays * 24 * 60 * 60;
+    await ChatLogModel.collection.createIndex({ createdAt: 1 }, { expireAfterSeconds });
+  }
+  ttlIndexEnsured = true;
+}

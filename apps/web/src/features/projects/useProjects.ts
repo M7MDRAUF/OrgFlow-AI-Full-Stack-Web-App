@@ -35,6 +35,7 @@ export interface ListProjectsFilters {
 
 export function useProjects(
   filters?: ListProjectsFilters,
+  options?: { enabled?: boolean },
 ): ReturnType<typeof useQuery<ProjectResponseDto[]>> {
   return useQuery<ProjectResponseDto[]>({
     queryKey: [...QUERY_KEYS.projects, filters ?? {}],
@@ -45,6 +46,7 @@ export function useProjects(
       }>('/projects', { params: filters, signal });
       return res.data.data.projects;
     },
+    enabled: options?.enabled ?? true,
   });
 }
 

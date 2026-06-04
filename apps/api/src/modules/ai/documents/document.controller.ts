@@ -4,7 +4,7 @@ import { errors } from '../../../utils/errors.js';
 import { paginationSchema } from '../../../utils/pagination.js';
 import { requireParam } from '../../../utils/request.js';
 import { sendSuccess } from '../../../utils/response.js';
-import type { ListDocumentsQuery, UploadDocumentInput } from './document.schema.js';
+import { listDocumentsQuerySchema, type UploadDocumentInput } from './document.schema.js';
 import * as documentService from './document.service.js';
 
 function requireAuth(req: Request) {
@@ -40,7 +40,7 @@ export async function listDocumentsHandler(req: Request, res: Response): Promise
   const pagination = paginationSchema.parse(req.query);
   const { items, total } = await documentService.listDocuments(
     requireAuth(req),
-    req.query as unknown as ListDocumentsQuery,
+    listDocumentsQuerySchema.parse(req.query),
     pagination,
   );
   sendSuccess(

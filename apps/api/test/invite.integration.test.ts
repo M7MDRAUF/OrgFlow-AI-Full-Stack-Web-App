@@ -16,7 +16,6 @@ const app = createApp(env);
 const ORG = new Types.ObjectId();
 const TEAM = new Types.ObjectId();
 const ADMIN_ID = new Types.ObjectId();
-const MEMBER_ID = new Types.ObjectId();
 
 let adminToken: string;
 
@@ -24,32 +23,18 @@ beforeAll(async () => {
   await OrganizationModel.create({ _id: ORG, name: 'InviteOrg', slug: 'inv' });
   await TeamModel.create({ _id: TEAM, organizationId: ORG, name: 'InvTeam' });
   const passwordHash = await bcrypt.hash('admin-password1', 10);
-  await UserModel.create([
-    {
-      _id: ADMIN_ID,
-      organizationId: ORG,
-      teamId: TEAM,
-      email: 'inv-admin@example.com',
-      displayName: 'Inv Admin',
-      role: 'admin',
-      status: 'active',
-      passwordHash,
-      inviteTokenHash: null,
-      inviteExpiresAt: null,
-    },
-    {
-      _id: MEMBER_ID,
-      organizationId: ORG,
-      teamId: TEAM,
-      email: 'inv-member@example.com',
-      displayName: 'Inv Member',
-      role: 'member',
-      status: 'active',
-      passwordHash,
-      inviteTokenHash: null,
-      inviteExpiresAt: null,
-    },
-  ]);
+  await UserModel.create({
+    _id: ADMIN_ID,
+    organizationId: ORG,
+    teamId: TEAM,
+    email: 'inv-admin@example.com',
+    displayName: 'Inv Admin',
+    role: 'admin',
+    status: 'active',
+    passwordHash,
+    inviteTokenHash: null,
+    inviteExpiresAt: null,
+  });
   adminToken = signAuthToken({
     sub: ADMIN_ID.toString(),
     organizationId: ORG.toString(),
@@ -89,7 +74,7 @@ describe('POST /api/v1/auth/invite', () => {
 
   it('rejects non-admin', async () => {
     const memberToken = signAuthToken({
-      sub: MEMBER_ID.toString(),
+      sub: new Types.ObjectId().toString(),
       organizationId: ORG.toString(),
       teamId: TEAM.toString(),
       role: 'member',

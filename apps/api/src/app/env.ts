@@ -26,7 +26,7 @@ const envSchema = z.object({
   // Atlas vector index exists.
   DEV_VECTOR_FALLBACK: z
     .enum(['0', '1'])
-    .default('1')
+    .default('0')
     .transform((v) => v === '1'),
   // DB-02: TTL (in days) applied to the chatLog collection. Bound history
   // growth without losing recent context. Set to 0 to disable.

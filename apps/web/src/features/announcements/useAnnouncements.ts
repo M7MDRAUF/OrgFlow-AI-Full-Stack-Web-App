@@ -116,13 +116,7 @@ export function useMarkAnnouncementRead(): ReturnType<
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: QUERY_KEYS.announcements });
-      // BUG-MEDIUM-14: also invalidate the unread count so the sidebar badge
-      // updates immediately after marking an announcement as read.
       void qc.invalidateQueries({ queryKey: QUERY_KEYS.unreadCount });
-    },
-    onError: (err: Error) => {
-      // BUG-LOW-21: surface mark-as-read errors instead of swallowing them silently.
-      toast.error(err.message || 'Failed to mark announcement as read');
     },
   });
 }

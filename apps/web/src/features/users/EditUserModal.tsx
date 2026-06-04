@@ -1,7 +1,18 @@
-import type { UserResponseDto, UserRole, UserStatus } from '@orgflow/shared-types';
+import {
+  USER_ROLES,
+  USER_STATUSES,
+  type UserResponseDto,
+  type UserRole,
+  type UserStatus,
+} from '@orgflow/shared-types';
 import { Button, Field, Input, Modal, Select } from '@orgflow/ui';
 import { useState, type FormEvent, type JSX } from 'react';
+import { z } from 'zod';
 import { useUpdateUser, useUpdateUserStatus } from './useUsers.js';
+
+const editUserSchema = z.object({
+  name: z.string().min(1, 'Name is required'),
+});
 
 export interface EditUserModalProps {
   user: UserResponseDto;
@@ -39,6 +50,11 @@ export function EditUserModal(props: EditUserModalProps): JSX.Element {
   async function onSubmit(): Promise<void> {
     setError(null);
     try {
+      const parsed = editUserSchema.safeParse({ name: name.trim() });
+      if (!parsed.success) {
+        setError(parsed.error.issues[0]?.message ?? 'Validation failed');
+        return;
+      }
       const nextTeam = teamId === '' ? null : teamId;
       const input: {
         name?: string;
@@ -99,7 +115,8 @@ export function EditUserModal(props: EditUserModalProps): JSX.Element {
             options={roleSelect}
             value={role}
             onChange={(e) => {
-              setRole(e.target.value as UserRole);
+              const parsed = z.enum(USER_ROLES).safeParse(e.target.value);
+              if (parsed.success) setRole(parsed.data);
             }}
           />
         </Field>
@@ -119,7 +136,8 @@ export function EditUserModal(props: EditUserModalProps): JSX.Element {
             options={statusSelect}
             value={status}
             onChange={(e) => {
-              setStatus(e.target.value as UserStatus);
+              const parsed = z.enum(USER_STATUSES).safeParse(e.target.value);
+              if (parsed.success) setStatus(parsed.data);
             }}
           />
         </Field>

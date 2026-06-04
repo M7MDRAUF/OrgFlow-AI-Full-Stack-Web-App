@@ -188,11 +188,16 @@ function AnnouncementItem({
           {announcement.body}
         </p>
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          {new Date(announcement.createdAt).toLocaleString()}
+          {formatDateTime(announcement.createdAt)}
         </p>
       </div>
     </Card>
   );
+}
+
+function formatDateTime(dateStr: string): string {
+  const date = new Date(dateStr);
+  return isNaN(date.getTime()) ? 'Invalid date' : date.toLocaleString();
 }
 
 function targetBadgeTone(t: AnnouncementTargetType): 'default' | 'info' | 'success' | 'warning' {

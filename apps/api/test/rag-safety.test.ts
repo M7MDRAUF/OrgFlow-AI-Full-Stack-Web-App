@@ -22,6 +22,9 @@ vi.mock('../src/modules/ai/embeddings.js', async (importOriginal) => {
   return {
     ...orig,
     embedText: vi.fn(() => Promise.resolve(new Array<number>(dims()).fill(0))),
+    embedTextWithStatus: vi.fn(() =>
+      Promise.resolve({ vector: new Array<number>(dims()).fill(0), degraded: false }),
+    ),
   };
 });
 
@@ -59,8 +62,6 @@ beforeAll(async () => {
     chunkIndex: 0,
     content: 'healthy chunk',
     embedding: zeroVec,
-    // BUG-LOW-19: embeddingDegraded is required by DocumentChunkDoc; false = healthy.
-    embeddingDegraded: false,
   };
   await DocumentChunkModel.create(chunkA);
 

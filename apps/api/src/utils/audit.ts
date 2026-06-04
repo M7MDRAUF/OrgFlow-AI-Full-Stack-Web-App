@@ -16,6 +16,7 @@ interface AuditEvent {
     | 'user.role.change'
     | 'user.team.change'
     | 'user.status.change'
+    | 'user.delete'
     | 'user.invite'
     | 'team.create'
     | 'team.update'

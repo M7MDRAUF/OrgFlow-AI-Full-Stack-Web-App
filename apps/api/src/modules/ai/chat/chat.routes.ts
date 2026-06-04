@@ -45,17 +45,18 @@ export function createChatRouter(): Router {
    * /ai/chat:
    *   post:
    *     tags: [AI Chat]
-   *     summary: Send a message to the AI assistant
+   *     summary: Ask the AI assistant a question
    *     requestBody:
    *       required: true
    *       content:
    *         application/json:
    *           schema:
    *             type: object
-   *             required: [message]
+   *             required: [question]
    *             properties:
-   *               message: { type: string }
-   *               conversationId: { type: string }
+   *               question: { type: string }
+   *               teamId: { type: string }
+   *               projectId: { type: string }
    *     responses:
    *       200:
    *         description: AI response with sources

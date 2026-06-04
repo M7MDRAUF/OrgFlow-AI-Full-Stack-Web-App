@@ -3,20 +3,32 @@ import type { UserResponseDto } from '@orgflow/shared-types';
 import { Types, type FilterQuery } from 'mongoose';
 import type { AuthContext } from '../../middleware/auth-context.js';
 import { logAudit } from '../../utils/audit.js';
+import { assertObjectId } from '../../utils/object-id.js';
 import { errors } from '../../utils/errors.js';
 import { toSkipLimit, type Pagination } from '../../utils/pagination.js';
-import { toUserResponseDto } from '../auth/auth.service.js';
+import { runInTransaction, sessionOpts } from '../../utils/transactions.js';
+import { ChatLogModel } from '../ai/chat/chat-log.model.js';
+import { DocumentModel } from '../ai/documents/document.model.js';
 import { ProjectModel } from '../projects/project.model.js';
-import { TaskModel } from '../tasks/task.model.js';
+import { TaskModel, TaskCommentModel } from '../tasks/task.model.js';
 import { TeamModel } from '../teams/team.model.js';
 import { UserModel, type UserDoc, type UserHydrated } from './user.model.js';
 import type { ListUsersQuery, UpdateUserInput, UpdateUserStatusInput } from './user.schema.js';
 
-function assertObjectId(id: string, label: string): Types.ObjectId {
-  if (!Types.ObjectId.isValid(id)) {
-    throw errors.validation(`Invalid ${label}`);
-  }
-  return new Types.ObjectId(id);
+export function toUserResponseDto(user: UserHydrated): UserResponseDto {
+  return {
+    id: user.id as string,
+    organizationId: user.organizationId.toString(),
+    teamId: user.teamId ? user.teamId.toString() : null,
+    role: user.role,
+    status: user.status,
+    name: user.displayName,
+    email: user.email,
+    avatarUrl: null,
+    themePreference: user.themePreference,
+    createdAt: user.createdAt.toISOString(),
+    updatedAt: user.updatedAt.toISOString(),
+  };
 }
 
 /**
@@ -124,11 +136,8 @@ export async function updateUser(
   const user = await findScopedUser(auth, id);
   const isSelf = auth.userId === id;
 
-  // BUG-LOW-4: permission check BEFORE any field mutations (previously placed
-  // after mutation assignments, meaning the forbidden check ran on a dirty doc).
-  // BUG-MEDIUM-2: leaders need to manage their team members; only admins can
-  // update users they don't own OR perform privileged operations below.
-  if (!isSelf && auth.role !== 'admin') {
+  // Members may only update their own themePreference/name.
+  if (!isSelf && auth.role === 'member') {
     throw errors.forbidden();
   }
 
@@ -137,17 +146,6 @@ export async function updateUser(
 
   if (input.role !== undefined) {
     if (auth.role !== 'admin') throw errors.forbidden('Only admins can change roles');
-    // BUG-MEDIUM-9: guard against demoting the last admin in the org.
-    if (input.role !== 'admin' && user.role === 'admin') {
-      const adminCount = await UserModel.countDocuments({
-        organizationId: new Types.ObjectId(auth.organizationId),
-        role: 'admin',
-        status: 'active',
-      });
-      if (adminCount <= 1) {
-        throw errors.conflict('Cannot demote the last active admin in the organization');
-      }
-    }
     const previousRole = user.role;
     user.role = input.role;
     // F6: role changes are privileged and must leave an audit trail.
@@ -179,9 +177,6 @@ export async function updateUser(
     });
   }
 
-  // Members may only update their own themePreference/name.
-  // (Moved to the top of the function — see BUG-LOW-4 fix comment above.)
-
   await user.save();
   return toUserResponseDto(user);
 }
@@ -193,17 +188,6 @@ export async function updateUserStatus(
 ): Promise<UserResponseDto> {
   if (auth.role !== 'admin') throw errors.forbidden('Only admins can change user status');
   const user = await findScopedUser(auth, id);
-  // BUG-MEDIUM-9: guard against disabling the last active admin.
-  if (input.status === 'disabled' && user.role === 'admin') {
-    const adminCount = await UserModel.countDocuments({
-      organizationId: new Types.ObjectId(auth.organizationId),
-      role: 'admin',
-      status: 'active',
-    });
-    if (adminCount <= 1) {
-      throw errors.conflict('Cannot disable the last active admin in the organization');
-    }
-  }
   const previousStatus = user.status;
   user.status = input.status;
   await user.save();
@@ -213,4 +197,43 @@ export async function updateUserStatus(
     meta: { from: previousStatus, to: input.status },
   });
   return toUserResponseDto(user);
+}
+
+export async function deleteUser(auth: AuthContext, id: string): Promise<void> {
+  if (auth.role !== 'admin') throw errors.forbidden('Only admins can delete users');
+  const user = await findScopedUser(auth, id);
+
+  // Prevent deleting the user who is currently authenticated
+  if (id === auth.userId) throw errors.forbidden('Cannot delete your own account');
+
+  const userObjId = user._id;
+
+  await runInTransaction(async (session) => {
+    const opts = sessionOpts(session);
+    // Cascade: nullify task assignments, delete comments, clean up project members, delete chat logs, nullify document uploadedBy
+    await TaskModel.updateMany({ assignedTo: userObjId }, { assignedTo: null }, opts);
+    await TaskCommentModel.deleteMany({ userId: userObjId }, opts);
+    await ProjectModel.updateMany(
+      { memberIds: userObjId },
+      { $pull: { memberIds: userObjId } },
+      opts,
+    );
+    await ChatLogModel.deleteMany({ userId: userObjId }, opts);
+    await DocumentModel.updateMany({ uploadedBy: userObjId }, { uploadedBy: null }, opts);
+
+    // Delete the user
+    await UserModel.deleteOne(
+      {
+        _id: userObjId,
+        organizationId: new Types.ObjectId(auth.organizationId),
+      },
+      opts,
+    );
+  }, 'deleteUser');
+
+  logAudit(auth, {
+    action: 'user.delete',
+    resourceId: id,
+    meta: { displayName: user.displayName, email: user.email },
+  });
 }

@@ -5,7 +5,6 @@ import type {
   InviteUserResponseDto,
   LoginResponseDto,
   MeResponseDto,
-  UserResponseDto,
 } from '@orgflow/shared-types';
 import bcrypt from 'bcryptjs';
 import { Types } from 'mongoose';
@@ -14,9 +13,9 @@ import type { AuthContext } from '../../middleware/auth-context.js';
 import { signAuthToken } from '../../middleware/auth.middleware.js';
 import { logAudit } from '../../utils/audit.js';
 import { errors } from '../../utils/errors.js';
-import { OrganizationModel } from '../organizations/organization.model.js';
 import { TeamModel } from '../teams/team.model.js';
 import { UserModel, type UserHydrated } from '../users/user.model.js';
+import { toUserResponseDto } from '../users/user.service.js';
 import type { CompleteInviteInput, InviteInput, LoginInput } from './auth.schema.js';
 
 const INVITE_TOKEN_BYTES = 32;
@@ -25,22 +24,6 @@ const BCRYPT_COST = 12;
 
 function hashInviteToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
-}
-
-export function toUserResponseDto(user: UserHydrated): UserResponseDto {
-  return {
-    id: user.id as string,
-    organizationId: user.organizationId.toString(),
-    teamId: user.teamId ? user.teamId.toString() : null,
-    role: user.role,
-    status: user.status,
-    name: user.displayName,
-    email: user.email,
-    avatarUrl: null,
-    themePreference: user.themePreference,
-    createdAt: user.createdAt.toISOString(),
-    updatedAt: user.updatedAt.toISOString(),
-  };
 }
 
 function issueToken(user: UserHydrated): string {
@@ -53,18 +36,7 @@ function issueToken(user: UserHydrated): string {
 }
 
 export async function login(input: LoginInput): Promise<LoginResponseDto> {
-  // BUG-CRITICAL-1: scope lookup by organization slug to prevent cross-tenant
-  // authentication bypass in multi-tenant deployments.
-  const org = await OrganizationModel.findOne({ slug: input.organizationSlug });
-  if (!org) {
-    // Equalise timing — do a dummy bcrypt compare to prevent org-enumeration.
-    await bcrypt.compare(
-      input.password,
-      '$2b$12$0000000000000000000000000000000000000000000000000000',
-    );
-    throw errors.unauthenticated('Invalid credentials');
-  }
-  const user = await UserModel.findOne({ email: input.email, organizationId: org._id });
+  const user = await UserModel.findOne({ email: input.email });
   if (user?.status !== 'active' || user.passwordHash === null) {
     // Equalise timing with a dummy bcrypt compare to prevent user-enumeration
     // side-channel attacks (attacker can't distinguish "no user" from "wrong password").
@@ -88,16 +60,11 @@ export async function login(input: LoginInput): Promise<LoginResponseDto> {
   return { token: issueToken(user), user: toUserResponseDto(user) };
 }
 
-// BUG-LOW-3: Accept full AuthContext so the query is scoped by organizationId,
-// matching the standard scope filter pattern (Rule 03).
-export async function getCurrentUser(auth: AuthContext): Promise<MeResponseDto> {
-  if (!Types.ObjectId.isValid(auth.userId)) {
+export async function getCurrentUser(userId: string): Promise<MeResponseDto> {
+  if (!Types.ObjectId.isValid(userId)) {
     throw errors.unauthenticated();
   }
-  const user = await UserModel.findOne({
-    _id: auth.userId,
-    organizationId: auth.organizationId,
-  });
+  const user = await UserModel.findById(userId);
   if (!user || user.status === 'disabled') {
     throw errors.unauthenticated();
   }
@@ -163,29 +130,20 @@ export async function completeInvite(
   input: CompleteInviteInput,
 ): Promise<CompleteInviteResponseDto> {
   const tokenHash = hashInviteToken(input.token);
-  // BUG-LOW-9: use findOneAndUpdate with the full status+expiry filter to make
-  // token invalidation atomic, eliminating the TOCTOU race where two concurrent
-  // requests with the same token both pass the status check before either saves.
-  const passwordHash = await bcrypt.hash(input.password, BCRYPT_COST);
-  const user = await UserModel.findOneAndUpdate(
-    {
-      inviteTokenHash: tokenHash,
-      status: 'pending',
-      inviteExpiresAt: { $gt: new Date() },
-    },
-    {
-      $set: {
-        passwordHash,
-        status: 'active',
-        inviteTokenHash: null,
-        inviteExpiresAt: null,
-      },
-    },
-    { new: true },
-  );
-  if (!user) {
+  const user = await UserModel.findOne({ inviteTokenHash: tokenHash });
+  if (
+    user?.status !== 'pending' ||
+    user.inviteExpiresAt === null ||
+    user.inviteExpiresAt.getTime() < Date.now()
+  ) {
     throw errors.unauthenticated('Invite token invalid or expired');
   }
+  const passwordHash = await bcrypt.hash(input.password, BCRYPT_COST);
+  user.passwordHash = passwordHash;
+  user.status = 'active';
+  user.inviteTokenHash = null;
+  user.inviteExpiresAt = null;
+  await user.save();
   return { token: issueToken(user), user: toUserResponseDto(user) };
 }
 

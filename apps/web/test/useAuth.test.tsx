@@ -31,8 +31,7 @@ const { apiClient } = await import('../src/lib/api-client.js');
 const { authStorage } = await import('../src/features/auth/storage.js');
 const { useLogin, useLogout, useMe } = await import('../src/features/auth/useAuth.js');
 
-const mockedGet = vi.mocked(apiClient.get);
-const mockedPost = vi.mocked(apiClient.post);
+const mockedApiClient = vi.mocked(apiClient);
 const mockedAuthStorage = vi.mocked(authStorage);
 
 const sampleUser: UserResponseDto = {
@@ -66,7 +65,7 @@ function wrapper({ children }: { children: ReactNode }) {
 describe('useMe', () => {
   it('fetches the current user when a token is present', async () => {
     const meResponse: MeResponseDto = { user: sampleUser };
-    mockedGet.mockResolvedValueOnce({
+    mockedApiClient.get.mockResolvedValueOnce({
       data: { success: true, data: meResponse },
     });
 
@@ -74,9 +73,10 @@ describe('useMe', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual(meResponse);
-    expect(mockedGet).toHaveBeenCalledWith(
+    expect(mockedApiClient.get).toHaveBeenCalledWith(
       '/auth/me',
-      expect.objectContaining({ signal: expect.any(AbortSignal) as unknown }),
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
   });
 
@@ -90,7 +90,7 @@ describe('useMe', () => {
       setTimeout(r, 50);
     });
     expect(result.current.fetchStatus).toBe('idle');
-    expect(mockedGet).not.toHaveBeenCalled();
+    expect(mockedApiClient.get).not.toHaveBeenCalled();
   });
 });
 
@@ -100,7 +100,7 @@ describe('useLogin', () => {
       token: 'jwt-token',
       user: sampleUser,
     };
-    mockedPost.mockResolvedValueOnce({
+    mockedApiClient.post.mockResolvedValueOnce({
       data: { success: true, data: loginResponse },
     });
 
@@ -110,7 +110,7 @@ describe('useLogin', () => {
       password: 'secret',
     });
 
-    expect(mockedPost).toHaveBeenCalledWith('/auth/login', {
+    expect(mockedApiClient.post).toHaveBeenCalledWith('/auth/login', {
       email: 'alice@test.com',
       password: 'secret',
     });
@@ -121,7 +121,7 @@ describe('useLogin', () => {
       token: 'jwt-token',
       user: sampleUser,
     };
-    mockedPost.mockResolvedValueOnce({
+    mockedApiClient.post.mockResolvedValueOnce({
       data: { success: true, data: loginResponse },
     });
 

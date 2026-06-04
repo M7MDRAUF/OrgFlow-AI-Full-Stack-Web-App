@@ -134,7 +134,8 @@ export function CreateAnnouncementModal({
             value={targetType}
             options={allowedTargetTypes.map((t) => ({ value: t, label: t }))}
             onChange={(e) => {
-              setTargetType(e.target.value as AnnouncementTargetType);
+              const parsed = z.enum(ANNOUNCEMENT_TARGET_TYPES).safeParse(e.target.value);
+              if (parsed.success) setTargetType(parsed.data);
               setTargetId('');
             }}
           />

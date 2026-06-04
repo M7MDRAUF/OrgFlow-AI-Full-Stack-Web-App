@@ -38,12 +38,10 @@ export interface TaskDetailModalProps {
 export function TaskDetailModal(props: TaskDetailModalProps): JSX.Element {
   const { task, projects, users, onClose, onEdit } = props;
   const profile = authStorage.getProfile();
-  // BUG-MEDIUM-16: removed the third condition (assignedTo === userId) because
-  // the backend canMutateTask() always returns false for members, so showing
-  // the edit form to assigned members produces a non-functional UI that
-  // immediately fails with 403.
   const canEdit =
-    profile?.role === 'admin' || (profile?.role === 'leader' && profile.teamId === task.teamId);
+    profile?.role === 'admin' ||
+    (profile?.role === 'leader' && profile.teamId === task.teamId) ||
+    task.assignedTo === (profile?.userId ?? null);
   const canDelete = profile?.role === 'admin' || profile?.role === 'leader';
 
   const commentsQuery = useTaskComments(task.id);

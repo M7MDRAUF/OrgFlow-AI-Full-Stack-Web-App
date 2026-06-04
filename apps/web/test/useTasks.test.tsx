@@ -80,10 +80,11 @@ describe('useTasks', () => {
       expect(mockedGet).toHaveBeenCalledWith(
         '/tasks',
         expect.objectContaining({
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           params: expect.objectContaining({
             projectId: 'p1',
             status: 'todo',
-          }) as unknown,
+          }),
         }),
       ),
     );

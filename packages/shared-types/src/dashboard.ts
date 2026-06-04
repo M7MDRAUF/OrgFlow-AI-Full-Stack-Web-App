@@ -38,10 +38,6 @@ export interface AdminDashboardResponseDto {
     taskCount: number;
     overdueCount: number;
   }[];
-  /** BUG-MEDIUM-7: total number of teams in the org (may exceed byTeam.length). */
-  totalTeams: number;
-  /** BUG-MEDIUM-7: true when the org has more teams than the byTeam cap. */
-  byTeamTruncated: boolean;
 }
 
 export interface LeaderDashboardResponseDto {

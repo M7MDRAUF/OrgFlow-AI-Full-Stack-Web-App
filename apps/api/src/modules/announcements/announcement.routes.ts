@@ -38,6 +38,7 @@ export function createAnnouncementsRouter(): Router {
    */
   router.get(
     '/',
+    requireRole('member'),
     validate({ query: listAnnouncementsQuerySchema }),
     asyncHandler(listAnnouncementsHandler),
   );
@@ -51,7 +52,7 @@ export function createAnnouncementsRouter(): Router {
    *       200:
    *         description: Unread count
    */
-  router.get('/unread-count', asyncHandler(getUnreadCountHandler));
+  router.get('/unread-count', requireRole('member'), asyncHandler(getUnreadCountHandler));
   /**
    * @openapi
    * /announcements/{id}:
@@ -69,7 +70,7 @@ export function createAnnouncementsRouter(): Router {
    *       404:
    *         description: Announcement not found
    */
-  router.get('/:id', asyncHandler(getAnnouncementHandler));
+  router.get('/:id', requireRole('member'), asyncHandler(getAnnouncementHandler));
   /**
    * @openapi
    * /announcements:
@@ -165,6 +166,6 @@ export function createAnnouncementsRouter(): Router {
    *       404:
    *         description: Announcement not found
    */
-  router.post('/:id/read', asyncHandler(markAnnouncementReadHandler));
+  router.post('/:id/read', requireRole('member'), asyncHandler(markAnnouncementReadHandler));
   return router;
 }

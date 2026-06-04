@@ -30,7 +30,7 @@ describe('SEC-01: JWT algorithm pinning', () => {
       }),
     ).toString('base64url');
     const forged = `${header}.${body}.`;
-    expect(() => verifyAuthToken(forged)).toThrowError(/Invalid or expired token/);
+    expect(() => verifyAuthToken(forged)).toThrow(/Invalid or expired token/);
   });
 
   it('rejects tokens signed with the wrong algorithm even when the secret is known', () => {
@@ -48,6 +48,6 @@ describe('SEC-01: JWT algorithm pinning', () => {
       secret,
       { algorithm: 'HS512' },
     );
-    expect(() => verifyAuthToken(forged)).toThrowError(/Invalid or expired token/);
+    expect(() => verifyAuthToken(forged)).toThrow(/Invalid or expired token/);
   });
 });

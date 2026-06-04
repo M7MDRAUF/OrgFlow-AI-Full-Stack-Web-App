@@ -25,7 +25,7 @@ const uploadLimiter = rateLimit({
   legacyHeaders: false,
   message: {
     success: false,
-    error: { code: 'RATE_LIMIT', message: 'Too many uploads, please try again later' },
+    error: { code: 'RATE_LIMITED', message: 'Too many uploads, please try again later' },
   },
   ...rateLimitStoreOptions('upload'),
 });
@@ -71,6 +71,7 @@ export function createDocumentsRouter(): Router {
    */
   router.get(
     '/',
+    requireRole('leader'),
     validate({ query: listDocumentsQuerySchema }),
     asyncHandler(listDocumentsHandler),
   );
@@ -127,7 +128,7 @@ export function createDocumentsRouter(): Router {
    *       404:
    *         description: Document not found
    */
-  router.get('/:id', asyncHandler(getDocumentHandler));
+  router.get('/:id', requireRole('leader'), asyncHandler(getDocumentHandler));
   /**
    * @openapi
    * /ai/documents/{id}/reindex:

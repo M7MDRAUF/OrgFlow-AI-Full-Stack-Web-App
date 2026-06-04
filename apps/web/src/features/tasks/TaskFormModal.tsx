@@ -1,5 +1,6 @@
 import {
   TASK_PRIORITIES,
+  TASK_STATUSES,
   type ProjectResponseDto,
   type TaskPriority,
   type TaskResponseDto,
@@ -58,7 +59,9 @@ export function TaskFormModal(props: TaskFormModalProps): JSX.Element {
 
   function toIsoOrNull(value: string): string | null {
     if (value === '') return null;
-    return new Date(value).toISOString();
+    const date = new Date(value);
+    if (isNaN(date.getTime())) return null;
+    return date.toISOString();
   }
 
   async function onSubmit(): Promise<void> {
@@ -201,7 +204,8 @@ export function TaskFormModal(props: TaskFormModalProps): JSX.Element {
               ]}
               value={priority}
               onChange={(e) => {
-                setPriority(e.target.value as TaskPriority);
+                const parsed = z.enum(TASK_PRIORITIES).safeParse(e.target.value);
+                if (parsed.success) setPriority(parsed.data);
               }}
             />
           </Field>
@@ -216,7 +220,8 @@ export function TaskFormModal(props: TaskFormModalProps): JSX.Element {
                 ]}
                 value={status}
                 onChange={(e) => {
-                  setStatus(e.target.value as TaskStatus);
+                  const parsed = z.enum(TASK_STATUSES).safeParse(e.target.value);
+                  if (parsed.success) setStatus(parsed.data);
                 }}
               />
             </Field>

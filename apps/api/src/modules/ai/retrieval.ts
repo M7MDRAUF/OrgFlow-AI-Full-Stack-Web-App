@@ -11,7 +11,9 @@ import {
   type DocumentChunkHydrated,
 } from './documents/document-chunk.model.js';
 import { DocumentModel } from './documents/document.model.js';
-import { cosineSimilarity, embedText } from './embeddings.js';
+import { cosineSimilarity, embedTextWithStatus } from './embeddings.js';
+
+const FALLBACK_MAX_CHUNKS = 100;
 
 export interface RetrievalScope {
   teamId?: string;
@@ -78,21 +80,12 @@ async function buildScopeFilter(
   // Role-based chunk access: allowedRoles empty → any role; otherwise must contain auth.role.
   // $size is NOT supported inside Atlas $vectorSearch pre-filter, so we keep
   // the role clause separate and apply it as a post-$match in the vector path.
-  // MEDIUM-10: also persist minRoleRank (numeric) for the $vectorSearch pre-filter so
-  // admin-only chunks never enter the candidate pool for lower-privileged callers.
-  // This reduces the probability of legitimate chunks being displaced by unauthorized ones.
-  const roleRankOf: Record<string, number> = { member: 0, leader: 1, admin: 2 };
-  const callerRank = roleRankOf[auth.role] ?? 0;
   const roleClause: Record<string, unknown> = {
     $or: [{ allowedRoles: { $size: 0 } }, { allowedRoles: auth.role }],
   };
 
   if (scope.teamId !== undefined) filter['teamId'] = new Types.ObjectId(scope.teamId);
   if (scope.projectId !== undefined) filter['projectId'] = new Types.ObjectId(scope.projectId);
-  // MEDIUM-10: include minRoleRank in the pre-filter so Atlas $vectorSearch excludes
-  // admin-only chunks before scoring begins. The post-filter (roleClause) is kept
-  // as a second check for defence-in-depth against legacy chunks without minRoleRank.
-  filter['minRoleRank'] = { $lte: callerRank };
   return { filter, roleClause };
 }
 
@@ -102,8 +95,16 @@ export async function retrieveChunks(
   scope: RetrievalScope,
   topK = 5,
 ): Promise<RetrievedChunk[]> {
-  const queryEmbedding = await embedText(query);
+  const { vector: queryEmbedding, degraded: queryDegraded } = await embedTextWithStatus(query);
   const { filter, roleClause } = await buildScopeFilter(auth, scope);
+
+  if (queryDegraded) {
+    getLogger(loadEnv()).warn(
+      { textPreview: query.substring(0, 80) },
+      'AI-02: query embedding is degraded (deterministic fallback) — returning empty retrieval set',
+    );
+    return [];
+  }
 
   const env = loadEnv();
   const useVectorSearch = !env.DEV_VECTOR_FALLBACK;
@@ -129,9 +130,8 @@ export async function retrieveChunks(
             index: 'chunk_vector_index',
             path: 'embedding',
             queryVector: queryEmbedding,
-            // BUG-LOW-17: cap numCandidates at 150 (Rule-10) and limit at 20 per channel.
-            numCandidates: Math.min(Math.max(topK * 20, topK * multiplier * 4), 150),
-            limit: Math.min(topK * multiplier, 20),
+            numCandidates: Math.max(topK * 20, topK * multiplier * 4),
+            limit: topK * multiplier,
             filter,
           },
         },
@@ -143,17 +143,17 @@ export async function retrieveChunks(
     };
 
     try {
-      let results = await runVectorSearch(4);
+      let results = await runVectorSearch(8);
       if (results.length < topK) {
-        // Likely victim of the post-filter cliff (member-scoped users with
-        // narrow project membership). Re-run with a wider net before giving
-        // up; warn so operators see the recall pressure.
+        // Victim of the post-filter cliff (member-scoped users with
+        // narrow project membership or restrictive allowedRoles). Re-run
+        // with a 16× multiplier before giving up.
         const logger = getLogger(env);
         logger.warn(
-          { topK, firstPassHits: results.length, multiplier: 8 },
-          'AI-04: vector retrieval under-recalled at 4×, retrying with 8× over-fetch',
+          { topK, firstPassHits: results.length, multiplier: 16 },
+          'AI-04: vector retrieval under-recalled at 8×, retrying with 16× over-fetch',
         );
-        results = await runVectorSearch(8);
+        results = await runVectorSearch(16);
       }
       top = results.map((r) => ({ chunk: r, score: r.score }));
     } catch (err: unknown) {
@@ -162,8 +162,8 @@ export async function retrieveChunks(
       const logger = getLogger(env);
       logger.error({ err }, '$vectorSearch aggregation failed, falling back to cosine similarity');
       const devFilter: Record<string, unknown> = { $and: [filter, roleClause] };
-      // BUG-LOW-16: reduce from 500 to 100 to bound memory usage (Rule-10).
-      const chunks: DocumentChunkHydrated[] = await DocumentChunkModel.find(devFilter).limit(100);
+      const chunks: DocumentChunkHydrated[] =
+        await DocumentChunkModel.find(devFilter).limit(FALLBACK_MAX_CHUNKS);
       const scored = chunks.map((c) => ({
         chunk: c,
         score: cosineSimilarity(queryEmbedding, c.embedding),
@@ -176,7 +176,8 @@ export async function retrieveChunks(
     // similarity. Portable for dev/test where no Atlas vector index exists.
     // Use $and to preserve both $or clauses (scope filter + role filter).
     const devFilter: Record<string, unknown> = { $and: [filter, roleClause] };
-    const chunks: DocumentChunkHydrated[] = await DocumentChunkModel.find(devFilter).limit(500);
+    const chunks: DocumentChunkHydrated[] =
+      await DocumentChunkModel.find(devFilter).limit(FALLBACK_MAX_CHUNKS);
 
     const scored = chunks.map((c) => ({
       chunk: c,

@@ -16,38 +16,22 @@ const env = loadEnv();
 const app = createApp(env);
 const ORG = new Types.ObjectId();
 const ADMIN = new Types.ObjectId();
-const MEMBER = new Types.ObjectId();
 
 beforeAll(async () => {
   const pw = await bcrypt.hash('Password123!', 10);
-  await UserModel.create([
-    {
-      _id: ADMIN,
-      organizationId: ORG,
-      teamId: null,
-      email: 'env-admin@test',
-      displayName: 'Env',
-      role: 'admin',
-      status: 'active',
-      passwordHash: pw,
-      inviteTokenHash: null,
-      inviteExpiresAt: null,
-      themePreference: 'system',
-    },
-    {
-      _id: MEMBER,
-      organizationId: ORG,
-      teamId: null,
-      email: 'env-member@test',
-      displayName: 'Env Member',
-      role: 'member',
-      status: 'active',
-      passwordHash: pw,
-      inviteTokenHash: null,
-      inviteExpiresAt: null,
-      themePreference: 'system',
-    },
-  ]);
+  await UserModel.create({
+    _id: ADMIN,
+    organizationId: ORG,
+    teamId: null,
+    email: 'env-admin@test',
+    displayName: 'Env',
+    role: 'admin',
+    status: 'active',
+    passwordHash: pw,
+    inviteTokenHash: null,
+    inviteExpiresAt: null,
+    themePreference: 'system',
+  });
 });
 
 interface ErrorEnvelope {
@@ -103,7 +87,7 @@ describe('Error envelope contract (Phase 6)', () => {
 
   it('403 RBAC deny → envelope with code FORBIDDEN', async () => {
     const memberToken = signAuthToken({
-      sub: MEMBER.toString(),
+      sub: new Types.ObjectId().toString(),
       organizationId: ORG.toString(),
       teamId: null,
       role: 'member',

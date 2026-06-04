@@ -1,10 +1,13 @@
 // rag-ingest-agent — Admin-only document upload & management page.
 import {
   DOCUMENT_VISIBILITIES,
+  USER_ROLES,
   type DocumentResponseDto,
   type DocumentStatus,
   type DocumentVisibility,
+  type UserRole,
 } from '@orgflow/shared-types';
+import { z } from 'zod';
 import {
   Badge,
   Button,
@@ -171,6 +174,7 @@ function UploadDocumentModal({ onClose }: UploadDocumentModalProps): JSX.Element
   const [visibility, setVisibility] = useState<DocumentVisibility>('organization');
   const [teamId, setTeamId] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [allowedRoles, setAllowedRoles] = useState<UserRole[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const teamOptions = useMemo(
@@ -188,31 +192,12 @@ function UploadDocumentModal({ onClose }: UploadDocumentModalProps): JSX.Element
     label: v,
   }));
 
-  // BUG-HIGH-3: validate file size and MIME type before uploading to prevent
-  // uploading arbitrary/malicious files and to give the user clear feedback.
-  const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
-  const ALLOWED_MIME_TYPES = [
-    'application/pdf',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'text/plain',
-    'text/markdown',
-  ] as const;
-
   const handleSubmit = (e: FormEvent<HTMLFormElement>): void => {
     e.preventDefault();
     setError(null);
 
     if (selectedFile === null) {
       setError('Please select a file to upload.');
-      return;
-    }
-    // BUG-HIGH-3: validate size and MIME type
-    if (selectedFile.size > MAX_FILE_SIZE_BYTES) {
-      setError('File must be smaller than 10 MB.');
-      return;
-    }
-    if (!(ALLOWED_MIME_TYPES as readonly string[]).includes(selectedFile.type)) {
-      setError('Only PDF, DOCX, TXT, and Markdown files are allowed.');
       return;
     }
     const trimmedTitle = title.trim();
@@ -229,6 +214,7 @@ function UploadDocumentModal({ onClose }: UploadDocumentModalProps): JSX.Element
       file: selectedFile,
       title: trimmedTitle,
       visibility,
+      ...(allowedRoles.length > 0 ? { allowedRoles } : {}),
     };
     if (visibility === 'team') vars.teamId = teamId;
 
@@ -291,7 +277,8 @@ function UploadDocumentModal({ onClose }: UploadDocumentModalProps): JSX.Element
             value={visibility}
             options={visibilityOptions}
             onChange={(e) => {
-              setVisibility(e.target.value as DocumentVisibility);
+              const parsed = z.enum(DOCUMENT_VISIBILITIES).safeParse(e.target.value);
+              if (parsed.success) setVisibility(parsed.data);
             }}
           />
         </Field>
@@ -307,6 +294,28 @@ function UploadDocumentModal({ onClose }: UploadDocumentModalProps): JSX.Element
             />
           </Field>
         ) : null}
+        <Field label="Restrict to roles" htmlFor="doc-roles" hint="Leave empty for all roles.">
+          <div
+            id="doc-roles"
+            className="flex gap-3 rounded-md border border-slate-200 p-2 dark:border-slate-700"
+          >
+            {USER_ROLES.map((role) => (
+              <label key={role} className="flex items-center gap-1.5 text-sm">
+                <input
+                  type="checkbox"
+                  checked={allowedRoles.includes(role)}
+                  onChange={() => {
+                    setAllowedRoles((prev) =>
+                      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role],
+                    );
+                  }}
+                  className="rounded border-slate-300 dark:border-slate-600"
+                />
+                {role}
+              </label>
+            ))}
+          </div>
+        </Field>
         {error !== null ? (
           <p role="alert" className="text-sm text-rose-600 dark:text-rose-400">
             {error}

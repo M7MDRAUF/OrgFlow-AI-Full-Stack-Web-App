@@ -83,9 +83,16 @@ export function Modal(props: PropsWithChildren<ModalProps>): JSX.Element | null 
         {title !== undefined && (
           <header
             id={typeof title === 'string' ? titleId : undefined}
-            className="border-b border-slate-200 px-5 py-4 text-base font-semibold dark:border-slate-800"
+            className="relative border-b border-slate-200 px-5 py-4 text-base font-semibold dark:border-slate-800"
           >
             {title}
+            <button
+              onClick={onClose}
+              className="absolute right-4 top-4 text-gray-400 hover:text-gray-600 focus:outline-none"
+              aria-label="Close modal"
+            >
+              ✕
+            </button>
           </header>
         )}
         <div className="px-5 py-4">{children}</div>

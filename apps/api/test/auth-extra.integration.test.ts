@@ -81,7 +81,7 @@ describe('AUTH-004 expired JWT', () => {
       env.JWT_SECRET,
       { algorithm: 'HS256', expiresIn: '-1s' },
     );
-    expect(() => verifyAuthToken(expired)).toThrowError(/Invalid or expired token/);
+    expect(() => verifyAuthToken(expired)).toThrow(/Invalid or expired token/);
   });
 
   it('rejects expired token at HTTP boundary', async () => {
@@ -109,7 +109,7 @@ describe('AUTH-005 malformed/tampered payload', () => {
     const malformed = jwt.sign({ sub: ADMIN_ID.toString() }, env.JWT_SECRET, {
       algorithm: 'HS256',
     });
-    expect(() => verifyAuthToken(malformed)).toThrowError(/Malformed token payload/);
+    expect(() => verifyAuthToken(malformed)).toThrow(/Malformed token payload/);
   });
 
   it('rejects token whose role is not in the allowed enum', () => {
@@ -123,7 +123,7 @@ describe('AUTH-005 malformed/tampered payload', () => {
       env.JWT_SECRET,
       { algorithm: 'HS256' },
     );
-    expect(() => verifyAuthToken(bogus)).toThrowError(/Malformed token payload/);
+    expect(() => verifyAuthToken(bogus)).toThrow(/Malformed token payload/);
   });
 
   it('rejects signature-tampered token', () => {
@@ -135,7 +135,7 @@ describe('AUTH-005 malformed/tampered payload', () => {
     });
     // Flip last char of signature (base64url) — signature mismatch.
     const flipped = valid.slice(0, -1) + (valid.endsWith('A') ? 'B' : 'A');
-    expect(() => verifyAuthToken(flipped)).toThrowError(/Invalid or expired token/);
+    expect(() => verifyAuthToken(flipped)).toThrow(/Invalid or expired token/);
   });
 });
 

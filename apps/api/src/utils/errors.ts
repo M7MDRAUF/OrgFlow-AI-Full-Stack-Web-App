@@ -44,6 +44,8 @@ export const errors = {
     new AppError({ statusCode: 502, code: 'AI_UPSTREAM_ERROR', message }),
   ingestion: (message: string): AppError =>
     new AppError({ statusCode: 422, code: 'INGESTION_FAILED', message }),
+  rateLimited: (message = 'Too many requests, please try again later'): AppError =>
+    new AppError({ statusCode: 429, code: 'RATE_LIMITED', message }),
 };
 
 export function isAppError(value: unknown): value is AppError {

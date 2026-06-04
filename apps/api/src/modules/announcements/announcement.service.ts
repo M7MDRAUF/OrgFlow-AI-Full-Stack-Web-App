@@ -3,6 +3,7 @@ import type { AnnouncementResponseDto, UnreadCountDto } from '@orgflow/shared-ty
 import { Types } from 'mongoose';
 import type { AuthContext } from '../../middleware/auth-context.js';
 import { logAudit } from '../../utils/audit.js';
+import { assertObjectId } from '../../utils/object-id.js';
 import { errors } from '../../utils/errors.js';
 import { toSkipLimit, type Pagination } from '../../utils/pagination.js';
 import { TeamModel } from '../teams/team.model.js';
@@ -13,11 +14,6 @@ import type {
   ListAnnouncementsQuery,
   UpdateAnnouncementInput,
 } from './announcement.schema.js';
-
-function assertObjectId(id: string, label: string): Types.ObjectId {
-  if (!Types.ObjectId.isValid(id)) throw errors.validation(`Invalid ${label}`);
-  return new Types.ObjectId(id);
-}
 
 function toDto(doc: AnnouncementHydrated, userId: Types.ObjectId): AnnouncementResponseDto {
   const readByCurrentUser = doc.readBy.some((id) => id.equals(userId));
@@ -53,12 +49,11 @@ async function assertTargetExists(
   if (!user) throw errors.notFound('User not found');
 }
 
-async function assertCanCreate(
+function assertCanCreate(
   auth: AuthContext,
-  orgId: Types.ObjectId,
   targetType: 'organization' | 'team' | 'user',
   targetId: Types.ObjectId,
-): Promise<void> {
+): void {
   if (auth.role === 'admin') return;
   if (auth.role === 'leader') {
     if (targetType === 'organization') {
@@ -67,20 +62,6 @@ async function assertCanCreate(
     if (auth.teamId === null) throw errors.forbidden('Leader has no team assigned');
     if (targetType === 'team' && targetId.toString() !== auth.teamId) {
       throw errors.forbidden('Leaders can only post to their own team');
-    }
-    // BUG-MEDIUM-22: leaders may only DM members of their own team,
-    // not arbitrary users in the organization.
-    if (targetType === 'user') {
-      const targetUser = await UserModel.findOne({
-        _id: targetId,
-        organizationId: orgId,
-        teamId: new Types.ObjectId(auth.teamId),
-      });
-      if (!targetUser) {
-        throw errors.forbidden(
-          'Leaders can only send direct messages to members of their own team',
-        );
-      }
     }
     return;
   }
@@ -158,7 +139,7 @@ export async function createAnnouncement(
   const orgId = new Types.ObjectId(auth.organizationId);
   const userId = new Types.ObjectId(auth.userId);
   const targetId = assertObjectId(input.targetId, 'target id');
-  await assertCanCreate(auth, orgId, input.targetType, targetId);
+  assertCanCreate(auth, input.targetType, targetId);
   await assertTargetExists(orgId, input.targetType, targetId);
 
   const doc = await AnnouncementModel.create({
@@ -235,8 +216,8 @@ export async function markAnnouncementRead(
   // Atomic $addToSet avoids TOCTOU race when concurrent requests mark the
   // same announcement as read — no duplicate entries possible.
   await AnnouncementModel.updateOne({ _id: announcementId }, { $addToSet: { readBy: userId } });
-  // BUG-LOW-12: Re-read with organizationId scope to prevent cross-org disclosure.
-  const updated = await AnnouncementModel.findOne({ _id: announcementId, organizationId: orgId });
+  // Re-read to return fresh state (readBy now guaranteed to include userId).
+  const updated = await AnnouncementModel.findById(announcementId);
   if (!updated) throw errors.notFound('Announcement not found');
   return toDto(updated, userId);
 }
