@@ -5,11 +5,11 @@ Role-based MERN + TypeScript platform with permission-aware retrieval-augmented 
 ## Stack
 
 - **Monorepo**: npm workspaces, TypeScript 5.6 (strict + `exactOptionalPropertyTypes` + `noUncheckedIndexedAccess`)
-- **Backend** (`apps/api`): Node 20, Express 4, MongoDB via Mongoose 8, Zod 3, JWT, bcrypt, Multer, Pino
-- **Frontend** (`apps/web`): React 18, Vite 5, TanStack Query 5, React Router 6, Tailwind, dnd-kit
+- **Backend** (`apps/api`): Node 20, Express 4, MongoDB via Mongoose 8, Zod 3, JWT, bcryptjs, Multer, Pino, Helmet, express-rate-limit, Swagger UI
+- **Frontend** (`apps/web`): React 18, Vite 8, TanStack Query 5, React Router 6, Tailwind, dnd-kit
 - **Shared** (`packages/shared-types`, `packages/ui`, `packages/shared-config`)
 - **AI**: Ollama (chat + embeddings) with deterministic fallback so the app stays functional offline
-- **Tooling**: ESLint 9 (flat, strict + stylistic type-checked), Prettier, Vitest 2
+- **Tooling**: ESLint 9 (flat, strict + stylistic type-checked), Prettier, Vitest 4
 
 ## Prerequisites
 
@@ -131,7 +131,7 @@ npm run test -w @orgflow/web
 
 ## CI
 
-GitHub Actions workflow at `.github/workflows/ci.yml` runs typecheck, lint, test, and build on every push / PR against `main`.
+This repository has no CI workflow. Run `npm run gates` locally (typecheck, lint, format check and tests).
 
 ## Conventions
 
@@ -142,4 +142,4 @@ GitHub Actions workflow at `.github/workflows/ci.yml` runs typecheck, lint, test
 
 ## License
 
-Proprietary — internal OrgFlow AI project.
+Proprietary — academic team project (CS 628 Full-Stack Development, City University of Seattle).

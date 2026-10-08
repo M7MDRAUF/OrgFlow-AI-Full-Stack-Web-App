@@ -7,7 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 <!--
   ════════════════════════════════════════════════════════════════════
   DEVELOPMENT ROUNDS — PROJECT HISTORY
-  CS 628 · Team 3 · OrgFlow AI · Harrisburg University
+  CS 628 · Team 3 · OrgFlow AI · City University of Seattle
 
   Round 1  (commit a5b97f7) ─ Monorepo Bootstrap
     • Initialised npm workspaces: apps/api, apps/web, packages/shared-types,
